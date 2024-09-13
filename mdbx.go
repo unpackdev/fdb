@@ -4,12 +4,14 @@ import (
 	"context"
 	"github.com/erigontech/mdbx-go/mdbx"
 	"github.com/pkg/errors"
+	"os"
 )
 
 type Db struct {
-	ctx context.Context
-	env *mdbx.Env
-	dbi mdbx.DBI
+	ctx  context.Context
+	opts MdbxNode
+	env  *mdbx.Env
+	dbi  mdbx.DBI
 }
 
 func NewDb(ctx context.Context, opts MdbxNode) (*Db, error) {
@@ -46,7 +48,23 @@ func NewDb(ctx context.Context, opts MdbxNode) (*Db, error) {
 		return nil, err
 	}
 
-	return &Db{ctx: ctx, env: env, dbi: dbi}, nil
+	return &Db{ctx: ctx, opts: opts, env: env, dbi: dbi}, nil
+}
+
+// Destroy removes the database files and cleans up the environment
+func (db *Db) Destroy() error {
+	// Close the environment before deleting the database
+	err := db.Close()
+	if err != nil {
+		return err
+	}
+
+	// Remove the database files
+	err = os.RemoveAll(db.opts.Path)
+	if err != nil {
+		return errors.Wrap(err, "failed to remove database files")
+	}
+	return nil
 }
 
 func (db *Db) GetEnv() *mdbx.Env {
