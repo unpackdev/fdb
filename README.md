@@ -1,0 +1,3 @@
+# (f)db
+
+Something about this database like fast database or f**k database idk...
