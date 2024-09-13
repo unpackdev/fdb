@@ -73,9 +73,16 @@ func TestUDPServer(t *testing.T) {
 	// Prepare buffer for reading response
 	buffer := make([]byte, 1024)
 
+	// Prepare test data
+	actionWrite := byte('W')      // Action byte for write
+	actionRead := byte('R')       // Action byte for read
+	key := make([]byte, 32)       // 32-byte key (could be generated or hardcoded)
+	value := []byte("test value") // Example value to write
+
 	// Test Write operation
+	writeMessage := append([]byte{actionWrite}, append(key, value...)...)
 	startTime := time.Now()
-	_, err = client.Write([]byte("WRITE"))
+	_, err = client.Write(writeMessage)
 	if err != nil {
 		t.Errorf("Failed to write to UDP server: %v", err)
 	}
@@ -97,11 +104,12 @@ func TestUDPServer(t *testing.T) {
 	// Log the response received from the server after write
 	t.Logf("Response from server after write: %s", string(buffer[:n]))
 
-	// Test Read operation
+	// Test Read operation (using the same key)
+	readMessage := append([]byte{actionRead}, key...)
 	startTime = time.Now()
-	_, err = client.Write([]byte("READ"))
+	_, err = client.Write(readMessage)
 	if err != nil {
-		t.Errorf("Failed to write to UDP server: %v", err)
+		t.Errorf("Failed to write to UDP server (read request): %v", err)
 	}
 	writeDuration = time.Since(startTime)
 	t.Logf("Time taken for write operation (read request): %v", writeDuration)
@@ -119,7 +127,11 @@ func TestUDPServer(t *testing.T) {
 	t.Logf("Time taken for read operation: %v", readDuration)
 
 	// Log the response received from the server after read
-	t.Logf("Response from server after read: %s", string(buffer[:n]))
+	readValue := buffer[:n]
+	t.Logf("Response from server after read: %s", string(readValue))
+
+	// Compare the written value with the read value
+	assert.Equal(t, value, readValue, "The read value should match the written value")
 
 	// Stop the server
 	server.Stop()
@@ -132,6 +144,7 @@ func TestUDPServer(t *testing.T) {
 	}
 }
 
+// Benchmark for write operations
 func BenchmarkUDPServerWrite(b *testing.B) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -155,12 +168,19 @@ func BenchmarkUDPServerWrite(b *testing.B) {
 	}
 	defer client.Close()
 
-	time.Sleep(100 * time.Millisecond)
+	// Prepare test data
+	actionWrite := byte('W')
+	key := make([]byte, 32)            // 32-byte key (can be generated or hardcoded)
+	value := []byte("benchmark value") // Example value to write
+
+	time.Sleep(100 * time.Millisecond) // Allow server to fully start
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_, err := client.Write([]byte("WRITE"))
+		// Write message: 1-byte action + 32-byte key + value
+		writeMessage := append([]byte{actionWrite}, append(key, value...)...)
+		_, err := client.Write(writeMessage)
 		if err != nil {
 			b.Errorf("Failed to write to UDP server: %v", err)
 		}
@@ -204,20 +224,29 @@ func BenchmarkUDPServerRead(b *testing.B) {
 	}
 	defer client.Close()
 
-	// Send a dummy request to ensure the server is ready
-	_, err = client.Write([]byte("READ"))
+	// Prepare test data
+	actionWrite := byte('W')
+	actionRead := byte('R')
+	key := make([]byte, 32)            // 32-byte key
+	value := []byte("benchmark value") // Example value to write
+
+	// Perform an initial write to store the value in the database
+	writeMessage := append([]byte{actionWrite}, append(key, value...)...)
+	_, err = client.Write(writeMessage)
 	if err != nil {
-		b.Fatalf("Failed to send dummy request: %v", err)
+		b.Fatalf("Failed to write initial data to UDP server: %v", err)
 	}
 
-	time.Sleep(100 * time.Millisecond) // Give some time for the server to process the request
+	time.Sleep(100 * time.Millisecond) // Allow the server to process the write request
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		_, err := client.Write([]byte("READ"))
+		// Read message: 1-byte action + 32-byte key
+		readMessage := append([]byte{actionRead}, key...)
+		_, err := client.Write(readMessage)
 		if err != nil {
-			b.Errorf("Failed to write to UDP server: %v", err)
+			b.Errorf("Failed to write read request to UDP server: %v", err)
 		}
 
 		buffer := make([]byte, 1024)

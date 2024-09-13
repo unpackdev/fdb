@@ -1,14 +1,13 @@
 package fdb
 
 import (
-	"github.com/pkg/errors"
 	"log"
 	"net"
 )
 
 // ReadHandler struct with MDBX database passed in
 type ReadHandler struct {
-	db *Db // Pass the MDBX database instance here
+	db *Db // MDBX database instance
 }
 
 // NewReadHandler creates a new ReadHandler with an MDBX database
@@ -20,23 +19,24 @@ func NewReadHandler(db *Db) *ReadHandler {
 
 // HandleMessage processes the incoming message using the ReadHandler
 func (rh *ReadHandler) HandleMessage(conn *net.UDPConn, buffer []byte, addr *net.UDPAddr) {
-	// Example: Use the first 8 bytes of the buffer as the key
-	key := buffer[:8]
-
-	// Read the value from the MDBX database
-	value, err := rh.db.Get(key)
-	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			log.Printf("Key not found in MDBX database: %v", err)
-			_, _ = conn.WriteToUDP([]byte("Key not found"), addr)
-		} else {
-			log.Printf("Error reading from MDBX database: %v", err)
-			_, _ = conn.WriteToUDP([]byte("Error reading from database"), addr)
-		}
+	// Check if the buffer length is at least 33 bytes (1 byte for action + 32 bytes for key)
+	if len(buffer) < 33 {
+		log.Printf("Invalid message length: %d, expected at least 33 bytes", len(buffer))
+		_, _ = conn.WriteToUDP([]byte("Invalid message format"), addr)
 		return
 	}
 
-	// Send the retrieved value back to the client
+	key := buffer[1:33] // First 32 bytes after the action as key
+
+	// Lookup the value in the MDBX database
+	value, err := rh.db.Get(key)
+	if err != nil {
+		log.Printf("Error reading from MDBX database: %v", err)
+		_, _ = conn.WriteToUDP([]byte("Error reading from database"), addr)
+		return
+	}
+
+	// Send the value back to the client
 	_, err = conn.WriteToUDP(value, addr)
 	if err != nil {
 		log.Printf("Error sending response: %v", err)

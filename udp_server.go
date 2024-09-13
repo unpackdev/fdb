@@ -1,14 +1,12 @@
 package fdb
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"log"
 	"net"
 	"runtime"
-	"strings"
 	"sync"
 )
 
@@ -165,42 +163,33 @@ func (server *UdpServer) worker() {
 
 // Process incoming UDP requests and dispatch to the appropriate handler
 func (server *UdpServer) processRequest(conn *net.UDPConn, buffer []byte, addr *net.UDPAddr) {
-	// Tokenize action directly from the buffer
-	actionEnd := bytes.IndexByte(buffer, ' ')
-	if actionEnd == -1 {
-		actionEnd = len(buffer)
-	}
-	action := buffer[:actionEnd]
-
-	// Convert action to HandlerType
-	actionType, err := server.parseActionType(action)
+	// Parse the action type from the first byte
+	actionType, err := server.parseActionType(buffer)
 	if err != nil {
 		conn.WriteToUDP([]byte("ERROR: Invalid action"), addr)
 		return
 	}
 
+	// Look up the handler in the registry
 	handler, exists := server.handlerRegistry[actionType]
 	if exists {
-		// Call the appropriate handler for the action
 		handler(conn, buffer, addr)
 	} else {
-		// Handle unknown action
 		conn.WriteToUDP([]byte("ERROR: Unknown action"), addr)
 	}
 }
 
-// Parse byte slice to HandlerType
-func (server *UdpServer) parseActionType(action []byte) (HandlerType, error) {
-	// Example: Convert byte slice to HandlerType using the string representation
-	var actionType HandlerType
-	strAction := strings.ToUpper(string(action))
-	switch strAction {
-	case "WRITE":
-		actionType = WriteHandlerType
-	case "READ":
-		actionType = ReadHandlerType
-	default:
-		return 0, fmt.Errorf("invalid action: %s", strAction)
+// ParseActionType parses the first byte of the buffer and returns the corresponding HandlerType
+func (server *UdpServer) parseActionType(buffer []byte) (HandlerType, error) {
+	if len(buffer) < 1 {
+		return 0, errors.New("invalid action: buffer too short")
 	}
+
+	var actionType HandlerType
+	err := actionType.FromByte(buffer[0])
+	if err != nil {
+		return 0, err
+	}
+
 	return actionType, nil
 }

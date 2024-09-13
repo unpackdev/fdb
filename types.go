@@ -1,16 +1,31 @@
 package fdb
 
+import "fmt"
+
 type DbType string
 
 func (t DbType) String() string {
 	return string(t)
 }
 
-// HandlerType ...
-type HandlerType int32
+// HandlerType represents different types of handlers
+type HandlerType byte
 
-// Define the handlers
+// Define the handlers as 1-byte constants
 const (
-	WriteHandlerType HandlerType = iota
-	ReadHandlerType
+	WriteHandlerType HandlerType = 'W' // 'W' for WRITE
+	ReadHandlerType  HandlerType = 'R' // 'R' for READ
 )
+
+// FromByte converts a byte into a HandlerType
+func (h *HandlerType) FromByte(b byte) error {
+	switch b {
+	case 'W':
+		*h = WriteHandlerType
+	case 'R':
+		*h = ReadHandlerType
+	default:
+		return fmt.Errorf("invalid action byte: %v", b)
+	}
+	return nil
+}
