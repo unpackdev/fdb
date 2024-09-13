@@ -1,7 +1,8 @@
-package fdb
+package main
 
-/*import (
+import (
 	"context"
+	"github.com/unpackdev/fdb"
 	"log"
 	"sync"
 )
@@ -14,23 +15,23 @@ func main() {
 	serverStarted.Add(1)
 
 	// Create a new UDP server instance
-	server, err := New(8781, "127.0.0.1")
+	server, err := fdb.New(8781, "127.0.0.1")
 	if err != nil {
 		log.Fatalf("Failed to create UDP server: %v", err)
 	}
 
 	// Register handlers
-	server.RegisterHandler(WriteHandlerType, WriteHandler)
-	server.RegisterHandler(ReadHandlerType, ReadHandler)
+	server.RegisterHandler(fdb.WriteHandlerType, fdb.WriteHandler)
+	server.RegisterHandler(fdb.ReadHandlerType, fdb.ReadHandler)
 
 	// Start the server in a separate goroutine
 	go func() {
-		defer serverStarted.Done()
+		//defer serverStarted.Done()
 		server.Start()
 	}()
 
 	// Wait for the server to start
-	serverStarted.Wait()
+	//serverStarted.Wait()
 
 	// Simulate running for a while before shutdown
 	select {
@@ -38,4 +39,4 @@ func main() {
 		log.Println("Server shutting down.")
 		server.Stop() // Gracefully stop the server
 	}
-}*/
+}
