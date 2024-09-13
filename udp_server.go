@@ -71,6 +71,10 @@ func New(port int, ip string) (*UdpServer, error) {
 	return server, nil
 }
 
+func (server *UdpServer) Addr() *net.UDPAddr {
+	return server.addr
+}
+
 // Start starts the UDP server
 func (server *UdpServer) Start() {
 	log.Printf("UDP Server started on %v", server.addr)

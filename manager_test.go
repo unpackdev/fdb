@@ -36,6 +36,27 @@ func setupTestManager(t *testing.T) *Manager {
 	return manager
 }
 
+func setupBenchmarkTestManager(t *testing.B) *Manager {
+	ctx := context.Background()
+
+	// Create a temporary directory for the test database
+	path := "./testdb"
+	err := os.Mkdir(path, 0755)
+	assert.NoError(t, err)
+
+	// Create options for the database
+	opts := MdbxNodes{
+		{Path: path, Name: "test"},
+	}
+
+	// Initialize Manager
+	manager, err := NewManager(ctx, opts)
+	assert.NoError(t, err)
+
+	// Teardown function to clean up after the test
+	return manager
+}
+
 func TestManagerDbOperations(t *testing.T) {
 	manager := setupTestManager(t)
 	// Get database from manager
