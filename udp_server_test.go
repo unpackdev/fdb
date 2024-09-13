@@ -70,68 +70,124 @@ func TestUDPServer(t *testing.T) {
 	}
 	defer client.Close()
 
-	// Prepare buffer for reading response
-	buffer := make([]byte, 1024)
-
-	// Prepare test data
-	actionWrite := byte('W')      // Action byte for write
-	actionRead := byte('R')       // Action byte for read
-	key := make([]byte, 32)       // 32-byte key (could be generated or hardcoded)
-	value := []byte("test value") // Example value to write
-
-	// Test Write operation
-	writeMessage := append([]byte{actionWrite}, append(key, value...)...)
-	startTime := time.Now()
-	_, err = client.Write(writeMessage)
-	if err != nil {
-		t.Errorf("Failed to write to UDP server: %v", err)
+	// Table of test cases
+	tests := []struct {
+		name       string
+		message    Message
+		shouldFail bool
+	}{
+		{
+			name: "Valid Write and Read",
+			message: Message{
+				Handler: WriteHandlerType,
+				Key:     [32]byte{},           // 32-byte key (could be generated or hardcoded)
+				Data:    []byte("test value"), // Example value to write
+			},
+			shouldFail: false,
+		},
+		{
+			name: "Invalid Key Length (Too Short)",
+			message: Message{
+				Handler: WriteHandlerType,
+				Key:     [32]byte{}, // 32-byte key but truncated in encoding
+				Data:    []byte("test value"),
+			},
+			shouldFail: true, // Expect failure due to improper key handling
+		},
+		{
+			name: "Invalid Handler Type",
+			message: Message{
+				Handler: 99,         // Invalid handler type
+				Key:     [32]byte{}, // 32-byte key
+				Data:    []byte("test value"),
+			},
+			shouldFail: true, // Expect failure due to unknown handler type
+		},
+		/*		{
+				name: "Empty Data",
+				message: Message{
+					Handler: WriteHandlerType,
+					Key:     [32]byte{}, // 32-byte key
+					Data:    []byte(""), // No data
+				},
+				shouldFail: true, // Expect failure due to no data
+			},*/
 	}
-	writeDuration := time.Since(startTime)
-	t.Logf("Time taken for write operation: %v", writeDuration)
 
-	// Wait for a short time to allow the server to process the request
-	time.Sleep(100 * time.Millisecond)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Encode the message for the Write operation
+			encodedMessage, err := tt.message.Encode()
+			if err != nil {
+				t.Fatalf("Failed to encode message: %v", err)
+			}
 
-	// Read response after write
-	startTime = time.Now()
-	n, _, err := client.ReadFromUDP(buffer)
-	if err != nil {
-		t.Errorf("Failed to read from UDP server: %v", err)
+			// Write the message to the server
+			startTime := time.Now()
+			_, err = client.Write(encodedMessage)
+			if err != nil {
+				t.Errorf("Failed to write to UDP server: %v", err)
+			}
+			writeDuration := time.Since(startTime)
+			t.Logf("Time taken for write operation: %v", writeDuration)
+
+			// Wait for a short time to allow the server to process the request
+			time.Sleep(100 * time.Millisecond)
+
+			// Prepare buffer for reading response
+			buffer := make([]byte, 1024)
+
+			// Read response after write
+			startTime = time.Now()
+			n, _, err := client.ReadFromUDP(buffer)
+			if err != nil {
+				t.Errorf("Failed to read from UDP server: %v", err)
+			}
+			readDuration := time.Since(startTime)
+			t.Logf("Time taken for read operation after write: %v", readDuration)
+
+			// Log the response received from the server after write
+			t.Logf("Response from server after write: %s", string(buffer[:n]))
+
+			// Prepare a Read message using the same key
+			readMessage := Message{
+				Handler: ReadHandlerType,
+				Key:     tt.message.Key,
+			}
+			encodedReadMessage, err := readMessage.Encode()
+			if err != nil {
+				t.Fatalf("Failed to encode read message: %v", err)
+			}
+
+			// Write the read request to the server
+			startTime = time.Now()
+			_, err = client.Write(encodedReadMessage)
+			if err != nil {
+				t.Errorf("Failed to write read request to UDP server: %v", err)
+			}
+			writeDuration = time.Since(startTime)
+			t.Logf("Time taken for write operation (read request): %v", writeDuration)
+
+			// Wait for the server to process the request
+			time.Sleep(100 * time.Millisecond)
+
+			// Read response after read
+			startTime = time.Now()
+			n, _, err = client.ReadFromUDP(buffer)
+			if err != nil {
+				t.Errorf("Failed to read from UDP server: %v", err)
+			}
+			readDuration = time.Since(startTime)
+			t.Logf("Time taken for read operation: %v", readDuration)
+
+			// Log the response received from the server after read
+			readValue := buffer[:n]
+			t.Logf("Response from server after read: %s", string(readValue))
+
+			// Compare the written value with the read value
+			assert.Equal(t, tt.message.Data, readValue, "The read value should match the written value")
+		})
 	}
-	readDuration := time.Since(startTime)
-	t.Logf("Time taken for read operation after write: %v", readDuration)
-
-	// Log the response received from the server after write
-	t.Logf("Response from server after write: %s", string(buffer[:n]))
-
-	// Test Read operation (using the same key)
-	readMessage := append([]byte{actionRead}, key...)
-	startTime = time.Now()
-	_, err = client.Write(readMessage)
-	if err != nil {
-		t.Errorf("Failed to write to UDP server (read request): %v", err)
-	}
-	writeDuration = time.Since(startTime)
-	t.Logf("Time taken for write operation (read request): %v", writeDuration)
-
-	// Wait for the server to process the request
-	time.Sleep(100 * time.Millisecond)
-
-	// Read response after read
-	startTime = time.Now()
-	n, _, err = client.ReadFromUDP(buffer)
-	if err != nil {
-		t.Errorf("Failed to read from UDP server: %v", err)
-	}
-	readDuration = time.Since(startTime)
-	t.Logf("Time taken for read operation: %v", readDuration)
-
-	// Log the response received from the server after read
-	readValue := buffer[:n]
-	t.Logf("Response from server after read: %s", string(readValue))
-
-	// Compare the written value with the read value
-	assert.Equal(t, value, readValue, "The read value should match the written value")
 
 	// Stop the server
 	server.Stop()
