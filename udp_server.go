@@ -8,6 +8,7 @@ import (
 	"net"
 	"runtime"
 	"sync"
+	"time"
 )
 
 // Handler function type
@@ -24,6 +25,7 @@ type UdpServer struct {
 	wg              sync.WaitGroup
 	ctx             context.Context
 	cancel          context.CancelFunc
+	runWg           sync.WaitGroup
 }
 
 // Task represents a UDP request that needs to be processed
@@ -86,21 +88,19 @@ func (server *UdpServer) Start() {
 		go server.worker()
 	}
 
-	// Listen for shutdown in a separate goroutine
-	go func() {
-		<-server.ctx.Done()
-		server.conn.Close()     // Close the listener when context is done
-		close(server.taskQueue) // Close the task queue to stop workers
-	}()
-
-	server.run()
+	// Start the run() method in a goroutine
+	server.runWg.Add(1)
+	go server.run()
 }
 
 // Stop stops the UDP server
 func (server *UdpServer) Stop() {
-	server.cancel()  // Cancel the context to stop the server
-	server.wg.Wait() // Wait for workers to finish
-	server.conn.Close()
+	server.cancel()                         // Cancel the context
+	server.conn.SetReadDeadline(time.Now()) // Unblock ReadFromUDP
+	server.runWg.Wait()                     // Wait for run() to finish
+	close(server.taskQueue)                 // Close the task queue
+	server.wg.Wait()                        // Wait for workers to finish
+	server.conn.Close()                     // Close the connection
 }
 
 // RegisterHandler registers a handler for a specific action
@@ -115,6 +115,8 @@ func (server *UdpServer) DeregisterHandler(actionType HandlerType) {
 
 // Run the server loop to process incoming requests
 func (server *UdpServer) run() {
+	defer server.runWg.Done()
+
 	for {
 		select {
 		case <-server.ctx.Done():
@@ -122,24 +124,30 @@ func (server *UdpServer) run() {
 		default:
 			buffer := server.pool.Get().([]byte)
 
-			// Read from UDP connection
 			n, clientAddr, err := server.conn.ReadFromUDP(buffer)
 			if err != nil {
+				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+					// Read timeout occurred, check if context is canceled
+					select {
+					case <-server.ctx.Done():
+						return
+					default:
+						continue
+					}
+				}
 				if errors.Is(err, net.ErrClosed) {
 					return
 				}
 				log.Printf("Error reading from UDP connection: %v", err)
-				server.pool.Put(buffer) // Return buffer on error
+				server.pool.Put(buffer)
 				continue
 			}
 
-			// Fetch a task from the pool
 			task := server.taskPool.Get().(*Task)
 			task.conn = server.conn
 			task.buffer = buffer[:n]
 			task.addr = clientAddr
 
-			// Send the task to the worker pool via the task queue
 			server.taskQueue <- task
 		}
 	}
