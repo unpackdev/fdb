@@ -2,4 +2,7 @@
 example:
 	go build -o example ./examples
 
+test:
+	go test -v
+
 .PHONY: example
