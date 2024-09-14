@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// Benchmark for write operations
+// Benchmark for write operations using gnet-based UDP server and Message struct
 func BenchmarkUDPServerWrite(b *testing.B) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -24,10 +24,21 @@ func BenchmarkUDPServerWrite(b *testing.B) {
 
 	serverStarted := &sync.WaitGroup{}
 	serverStarted.Add(1)
-	server := startUDPServer(ctx, serverStarted, db)
+	server, sErr := startUDPServer(ctx, serverStarted, db)
+	assert.NoError(b, sErr)
 	serverStarted.Wait()
 
-	client, err := net.DialUDP("udp", nil, server.Addr()) // Use server.Addr() to get the server address
+	// Wait for the server to start
+	time.Sleep(100 * time.Millisecond)
+
+	// Resolve the server address
+	serverAddr, err := net.ResolveUDPAddr("udp", server.Addr().String())
+	if err != nil {
+		b.Fatalf("Failed to resolve server address: %v", err)
+	}
+
+	// Create the UDP client
+	client, err := net.DialUDP("udp", nil, serverAddr)
 	if err != nil {
 		b.Fatalf("Failed to create UDP client: %v", err)
 	}
@@ -59,19 +70,22 @@ func BenchmarkUDPServerWrite(b *testing.B) {
 		_, err := client.Write(encodedMessage)
 		if err != nil {
 			b.Errorf("Failed to write to UDP server: %v", err)
+			continue
 		}
+
+		// Optionally read the response from the server (if any)
+		// buffer := make([]byte, 1024)
+		// n, err := client.Read(buffer)
+		// if err != nil {
+		//     b.Errorf("Failed to read from UDP server: %v", err)
+		//     continue
+		// }
+		// Use response if needed
 	}
 
 	b.StopTimer()
 
-	// Ensure server stops
+	// Stop the server
 	server.Stop()
-	time.Sleep(1 * time.Second) // Allow more time for server to stop
-
-	// Verify server has stopped
-	select {
-	case <-time.After(2 * time.Second):
-		b.Fatal("Server did not stop in time")
-	default:
-	}
+	time.Sleep(100 * time.Millisecond) // Allow some time for the server to stop
 }

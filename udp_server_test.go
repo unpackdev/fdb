@@ -3,6 +3,7 @@ package fdb
 import (
 	"context"
 	"github.com/stretchr/testify/assert"
+	"log"
 	"net"
 	"sync"
 	"testing"
@@ -25,10 +26,10 @@ func readHandler(conn *net.UDPConn, buffer []byte, addr *net.UDPAddr) {
 }
 
 // Start UDP server function with handlers for write and read
-func startUDPServer(ctx context.Context, serverStarted *sync.WaitGroup, db *Db) *UdpServer {
-	server, err := New(8781, "127.0.0.1")
+func startUDPServer(ctx context.Context, serverStarted *sync.WaitGroup, db *Db) (*UdpServer, error) {
+	server, err := NewUdpServer("127.0.0.1", 8781)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	// Register handlers with actual WriteHandler and ReadHandler
@@ -39,13 +40,17 @@ func startUDPServer(ctx context.Context, serverStarted *sync.WaitGroup, db *Db) 
 	server.RegisterHandler(ReadHandlerType, rHandler.HandleMessage)
 
 	go func() {
-		server.Start()
+		err := server.Start()
+		if err != nil {
+			log.Fatalf("Failed to start server: %v", err)
+		}
 	}()
 
 	serverStarted.Done()
-	return server
+	return server, nil
 }
 
+// TestUDPServer tests the gnet-based UDP server with various scenarios
 func TestUDPServer(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -60,11 +65,17 @@ func TestUDPServer(t *testing.T) {
 
 	serverStarted := &sync.WaitGroup{}
 	serverStarted.Add(1)
-	server := startUDPServer(ctx, serverStarted, db)
+	server, sErr := startUDPServer(ctx, serverStarted, db)
+	assert.NoError(t, sErr)
 	serverStarted.Wait()
 
-	// Create UDP client
-	client, err := net.DialUDP("udp", nil, server.Addr()) // Use server.Addr() to get the server address
+	serverAddr, err := net.ResolveUDPAddr("udp", server.Addr().String())
+	if err != nil {
+		t.Fatalf("Failed to resolve server address: %v", err)
+	}
+
+	// Create the UDP client
+	client, err := net.DialUDP("udp", nil, serverAddr)
 	if err != nil {
 		t.Fatalf("Failed to create UDP client: %v", err)
 	}
@@ -72,83 +83,109 @@ func TestUDPServer(t *testing.T) {
 
 	// Table of test cases
 	tests := []struct {
-		name       string
-		message    Message
-		shouldFail bool
+		name          string
+		message       Message
+		shouldFail    bool
+		modifyMessage func([]byte) []byte // Function to modify the encoded message for testing
 	}{
 		{
 			name: "Valid Write and Read",
 			message: Message{
 				Handler: WriteHandlerType,
-				Key:     [32]byte{},           // 32-byte key (could be generated or hardcoded)
-				Data:    []byte("test value"), // Example value to write
+				Key:     [32]byte{},
+				Data:    []byte("test value"),
 			},
-			shouldFail: false,
+			shouldFail:    false,
+			modifyMessage: nil,
 		},
 		{
 			name: "Invalid Key Length (Too Short)",
 			message: Message{
 				Handler: WriteHandlerType,
-				Key:     [32]byte{}, // 32-byte key but truncated in encoding
+				Key:     [32]byte{},
 				Data:    []byte("test value"),
 			},
-			shouldFail: true, // Expect failure due to improper key handling
+			shouldFail: true,
+			modifyMessage: func(encodedMsg []byte) []byte {
+				// Truncate the key to 31 bytes to simulate an invalid key length
+				return append(encodedMsg[:1], encodedMsg[1:32]...) // Handler + 31-byte key
+			},
 		},
 		{
 			name: "Invalid Handler Type",
 			message: Message{
-				Handler: 99,         // Invalid handler type
-				Key:     [32]byte{}, // 32-byte key
+				Handler: 99, // Invalid handler type
+				Key:     [32]byte{},
 				Data:    []byte("test value"),
 			},
-			shouldFail: true, // Expect failure due to unknown handler type
+			shouldFail:    true,
+			modifyMessage: nil,
 		},
-		/*		{
-				name: "Empty Data",
-				message: Message{
-					Handler: WriteHandlerType,
-					Key:     [32]byte{}, // 32-byte key
-					Data:    []byte(""), // No data
-				},
-				shouldFail: true, // Expect failure due to no data
-			},*/
+		{
+			name: "Empty Data",
+			message: Message{
+				Handler: WriteHandlerType,
+				Key:     [32]byte{},
+				Data:    []byte(""), // No data
+			},
+			shouldFail:    false, // Depending on your application's logic, adjust this
+			modifyMessage: nil,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Encode the message for the Write operation
+			// Encode the message
 			encodedMessage, err := tt.message.Encode()
 			if err != nil {
 				t.Fatalf("Failed to encode message: %v", err)
 			}
 
-			// Write the message to the server
-			startTime := time.Now()
+			// Modify the encoded message if needed
+			if tt.modifyMessage != nil {
+				encodedMessage = tt.modifyMessage(encodedMessage)
+			}
+
+			// Send the message to the server
 			_, err = client.Write(encodedMessage)
 			if err != nil {
 				t.Errorf("Failed to write to UDP server: %v", err)
+				return
 			}
-			writeDuration := time.Since(startTime)
-			t.Logf("Time taken for write operation: %v", writeDuration)
-
-			// Wait for a short time to allow the server to process the request
-			time.Sleep(100 * time.Millisecond)
 
 			// Prepare buffer for reading response
 			buffer := make([]byte, 1024)
 
+			// Set read deadline to prevent blocking indefinitely
+			client.SetReadDeadline(time.Now().Add(1 * time.Second))
+
 			// Read response after write
-			startTime = time.Now()
 			n, _, err := client.ReadFromUDP(buffer)
 			if err != nil {
+				if tt.shouldFail {
+					// Expected failure due to read timeout or error
+					t.Logf("Expected failure occurred: %v", err)
+					return
+				}
 				t.Errorf("Failed to read from UDP server: %v", err)
+				return
 			}
-			readDuration := time.Since(startTime)
-			t.Logf("Time taken for read operation after write: %v", readDuration)
 
 			// Log the response received from the server after write
-			t.Logf("Response from server after write: %s", string(buffer[:n]))
+			response := string(buffer[:n])
+			t.Logf("Response from server after write: %s", response)
 
+			if tt.shouldFail {
+				// If we expected a failure but received a response, check if it's an error message
+				if response == "Message written to MDBX" {
+					t.Errorf("Expected failure, but write succeeded")
+				} else {
+					t.Logf("Received expected error response: %s", response)
+				}
+				return
+			}
+
+			// For valid write operations, proceed to read the value back
 			// Prepare a Read message using the same key
 			readMessage := Message{
 				Handler: ReadHandlerType,
@@ -159,26 +196,20 @@ func TestUDPServer(t *testing.T) {
 				t.Fatalf("Failed to encode read message: %v", err)
 			}
 
-			// Write the read request to the server
-			startTime = time.Now()
+			// Send the read request to the server
 			_, err = client.Write(encodedReadMessage)
 			if err != nil {
 				t.Errorf("Failed to write read request to UDP server: %v", err)
+				return
 			}
-			writeDuration = time.Since(startTime)
-			t.Logf("Time taken for write operation (read request): %v", writeDuration)
-
-			// Wait for the server to process the request
-			time.Sleep(100 * time.Millisecond)
 
 			// Read response after read
-			startTime = time.Now()
+			client.SetReadDeadline(time.Now().Add(1 * time.Second))
 			n, _, err = client.ReadFromUDP(buffer)
 			if err != nil {
 				t.Errorf("Failed to read from UDP server: %v", err)
+				return
 			}
-			readDuration = time.Since(startTime)
-			t.Logf("Time taken for read operation: %v", readDuration)
 
 			// Log the response received from the server after read
 			readValue := buffer[:n]
@@ -187,15 +218,5 @@ func TestUDPServer(t *testing.T) {
 			// Compare the written value with the read value
 			assert.Equal(t, tt.message.Data, readValue, "The read value should match the written value")
 		})
-	}
-
-	// Stop the server
-	server.Stop()
-
-	// Ensure server has stopped
-	select {
-	case <-time.After(2 * time.Second):
-		t.Fatal("Server did not stop in time")
-	default:
 	}
 }

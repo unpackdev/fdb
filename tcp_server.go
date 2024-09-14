@@ -1,5 +1,6 @@
 package fdb
 
+/*
 import (
 	"encoding/binary"
 	"github.com/panjf2000/gnet"
@@ -89,3 +90,4 @@ func (s *TCPServer) parseActionType(frame []byte) (HandlerType, error) {
 
 	return HandlerType(frame[0]), nil
 }
+*/

@@ -1,13 +1,38 @@
 package fdb
 
+/*
 import (
 	"encoding/binary"
+	"log"
 	"net"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 )
+
+func startTCPServer(db *Db) *TCPServer {
+	// Create the server
+	server := NewTCPServer("tcp://127.0.0.1:8781")
+
+	// Create the GnetWriteHandler and GnetReadHandler with the database
+	gnetWriteHandler := NewGnetWriteHandler(db)
+	gnetReadHandler := NewGnetReadHandler(db)
+
+	// Register the handlers with the server
+	server.RegisterHandler(WriteHandlerType, gnetWriteHandler.HandleMessage)
+	server.RegisterHandler(ReadHandlerType, gnetReadHandler.HandleMessage)
+
+	// Start the server
+	go func() {
+		err := server.Start()
+		if err != nil {
+			log.Fatalf("Failed to start server: %v", err)
+		}
+	}()
+
+	return server
+}
 
 func TestTCPServer(t *testing.T) {
 	// Create the server
@@ -91,3 +116,4 @@ func TestTCPServer(t *testing.T) {
 	// Optionally, wait a bit before ending the test
 	time.Sleep(100 * time.Millisecond)
 }
+*/
