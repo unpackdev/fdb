@@ -2,31 +2,16 @@ package fdb
 
 import (
 	"context"
+	"crypto/rand"
 	"github.com/stretchr/testify/assert"
 	"log"
 	"net"
-	"sync"
 	"testing"
 	"time"
 )
 
-// Define handler functions
-func writeHandler(conn *net.UDPConn, buffer []byte, addr *net.UDPAddr) {
-	_, err := conn.WriteToUDP([]byte("WRITE HANDLED"), addr)
-	if err != nil {
-		// Handle error appropriately
-	}
-}
-
-func readHandler(conn *net.UDPConn, buffer []byte, addr *net.UDPAddr) {
-	_, err := conn.WriteToUDP([]byte("READ HANDLED"), addr)
-	if err != nil {
-		// Handle error appropriately
-	}
-}
-
 // Start UDP server function with handlers for write and read
-func startUDPServer(ctx context.Context, serverStarted *sync.WaitGroup, db *Db) (*UdpServer, error) {
+func startUDPServer(ctx context.Context, db *Db) (*UdpServer, error) {
 	server, err := NewUdpServer("127.0.0.1", 8781)
 	if err != nil {
 		return nil, err
@@ -46,7 +31,12 @@ func startUDPServer(ctx context.Context, serverStarted *sync.WaitGroup, db *Db) 
 		}
 	}()
 
-	serverStarted.Done()
+	log.Println("Awaiting for started closure...")
+	// Wait for the server to signal that it has started
+	<-server.WaitStarted()
+
+	log.Println("Started closure detected...")
+
 	return server, nil
 }
 
@@ -63,11 +53,8 @@ func TestUDPServer(t *testing.T) {
 	assert.NoError(t, err)
 	defer db.Destroy()
 
-	serverStarted := &sync.WaitGroup{}
-	serverStarted.Add(1)
-	server, sErr := startUDPServer(ctx, serverStarted, db)
+	server, sErr := startUDPServer(ctx, db)
 	assert.NoError(t, sErr)
-	serverStarted.Wait()
 
 	serverAddr, err := net.ResolveUDPAddr("udp", server.Addr().String())
 	if err != nil {
@@ -92,7 +79,7 @@ func TestUDPServer(t *testing.T) {
 			name: "Valid Write and Read",
 			message: Message{
 				Handler: WriteHandlerType,
-				Key:     [32]byte{},
+				Key:     [32]byte{}, // Will be set to random key
 				Data:    []byte("test value"),
 			},
 			shouldFail:    false,
@@ -102,7 +89,7 @@ func TestUDPServer(t *testing.T) {
 			name: "Invalid Key Length (Too Short)",
 			message: Message{
 				Handler: WriteHandlerType,
-				Key:     [32]byte{},
+				Key:     [32]byte{}, // Will be set to random key
 				Data:    []byte("test value"),
 			},
 			shouldFail: true,
@@ -114,8 +101,8 @@ func TestUDPServer(t *testing.T) {
 		{
 			name: "Invalid Handler Type",
 			message: Message{
-				Handler: 99, // Invalid handler type
-				Key:     [32]byte{},
+				Handler: 99,         // Invalid handler type
+				Key:     [32]byte{}, // Will be set to random key
 				Data:    []byte("test value"),
 			},
 			shouldFail:    true,
@@ -125,16 +112,25 @@ func TestUDPServer(t *testing.T) {
 			name: "Empty Data",
 			message: Message{
 				Handler: WriteHandlerType,
-				Key:     [32]byte{},
+				Key:     [32]byte{}, // Will be set to random key
 				Data:    []byte(""), // No data
 			},
-			shouldFail:    false, // Depending on your application's logic, adjust this
+			shouldFail:    true, // Adjusted to reflect the protocol requirement
 			modifyMessage: nil,
 		},
 	}
 
 	for _, tt := range tests {
+		tt := tt // capture tt for the closure
 		t.Run(tt.name, func(t *testing.T) {
+			// Generate a random 32-byte key
+			var keyBytes [32]byte
+			_, err := rand.Read(keyBytes[:])
+			if err != nil {
+				t.Fatalf("Failed to generate random key: %v", err)
+			}
+			tt.message.Key = keyBytes
+
 			// Encode the message
 			encodedMessage, err := tt.message.Encode()
 			if err != nil {
@@ -177,7 +173,7 @@ func TestUDPServer(t *testing.T) {
 
 			if tt.shouldFail {
 				// If we expected a failure but received a response, check if it's an error message
-				if response == "Message written to MDBX" {
+				if response == "Message written to database" {
 					t.Errorf("Expected failure, but write succeeded")
 				} else {
 					t.Logf("Received expected error response: %s", response)
@@ -204,7 +200,9 @@ func TestUDPServer(t *testing.T) {
 			}
 
 			// Read response after read
-			client.SetReadDeadline(time.Now().Add(1 * time.Second))
+			rdErr := client.SetReadDeadline(time.Now().Add(1 * time.Second))
+			assert.NoError(t, rdErr)
+
 			n, _, err = client.ReadFromUDP(buffer)
 			if err != nil {
 				t.Errorf("Failed to read from UDP server: %v", err)

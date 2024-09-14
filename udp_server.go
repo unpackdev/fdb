@@ -18,6 +18,7 @@ type UdpServer struct {
 	handlerRegistry map[HandlerType]Handler
 	addr            *net.UDPAddr
 	stopChan        chan struct{}
+	started         chan struct{}
 }
 
 // NewUdpServer creates a new UdpServerGnet instance
@@ -43,6 +44,7 @@ func (s *UdpServer) Addr() *net.UDPAddr {
 // Start starts the UDP server
 func (s *UdpServer) Start() error {
 	s.stopChan = make(chan struct{})
+	s.started = make(chan struct{}) // Initialize the started channel
 	listenAddr := "udp://" + s.addr.String()
 	log.Printf("UDP Server started on %s", listenAddr)
 	return gnet.Serve(s, listenAddr, gnet.WithMulticore(true))
@@ -63,9 +65,15 @@ func (s *UdpServer) Stop() {
 	close(s.stopChan)
 }
 
+func (s *UdpServer) WaitStarted() <-chan struct{} {
+	return s.started
+}
+
 // OnInitComplete is called when the server starts
 func (s *UdpServer) OnInitComplete(server gnet.Server) (action gnet.Action) {
 	log.Printf("UDP Server is listening on %s", server.Addr.String())
+	close(s.started) // Signal that the server has started
+	log.Println("Closed started...")
 	return
 }
 

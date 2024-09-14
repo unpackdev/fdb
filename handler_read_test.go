@@ -5,7 +5,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"log"
 	"net"
-	"sync"
 	"testing"
 	"time"
 )
@@ -23,11 +22,8 @@ func BenchmarkUDPServerRead(b *testing.B) {
 	assert.NoError(b, err)
 	defer db.Destroy()
 
-	serverStarted := &sync.WaitGroup{}
-	serverStarted.Add(1)
-	server, sErr := startUDPServer(ctx, serverStarted, db)
+	server, sErr := startUDPServer(ctx, db)
 	assert.NoError(b, sErr)
-	serverStarted.Wait()
 
 	// Wait for the server to start
 	time.Sleep(100 * time.Millisecond)

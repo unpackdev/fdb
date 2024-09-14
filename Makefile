@@ -3,6 +3,6 @@ example:
 	go build -o example ./examples
 
 test:
-	go test -v
+	go test -v -cover
 
 .PHONY: example
