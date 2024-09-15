@@ -15,6 +15,16 @@ Though this will be hard to achieve without DPDK. Will not overkill the prototyp
 **NOTE: At this moment I am adding all possible faster ways, including TCP, to be able to do proper benchmarking first.
 In the future, I may drop transports that prove to be inefficient based on benchmark results.**
 
+## GNET
+
+gnet is a high-performance, lightweight, non-blocking, event-driven networking framework written in pure Go.
+
+gnet is an event-driven networking framework that is ultra-fast and lightweight. It is built from scratch by exploiting epoll and kqueue and it can achieve much higher performance with lower memory consumption than Go net in many specific scenarios.
+
+https://github.com/panjf2000/gnet
+
+
+
 ## QUIC (HTTP/3)
 
 https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes
