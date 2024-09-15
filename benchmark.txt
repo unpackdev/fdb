@@ -1,0 +1,55 @@
+=== RUN   TestManagerDbOperations
+    manager_test.go:24: 
+        	Error Trace:	/home/nevio/dev/unpack/fdb/manager_test.go:24
+        	            				/home/nevio/dev/unpack/fdb/manager_test.go:65
+        	Error:      	Received unexpected error:
+        	            	mkdir ./testdb: file exists
+        	Test:       	TestManagerDbOperations
+=== RUN   TestManagerDbOperations/Set_and_Get_Key
+=== RUN   TestManagerDbOperations/Check_Exists_Key
+=== RUN   TestManagerDbOperations/Delete_Key
+--- FAIL: TestManagerDbOperations (0.03s)
+    --- PASS: TestManagerDbOperations/Set_and_Get_Key (0.01s)
+    --- PASS: TestManagerDbOperations/Check_Exists_Key (0.01s)
+    --- PASS: TestManagerDbOperations/Delete_Key (0.01s)
+=== RUN   TestQUICServer
+2024/09/15 14:48:44 Starting QUIC server on port: 39182
+2024/09/15 14:48:44 Awaiting for started closure...
+2024/09/15 14:48:44 Starting QUIC server...
+2024/09/15 14:48:44 QUIC Server started on 127.0.0.1:39182
+2024/09/15 14:48:44 QUIC server started.
+2024/09/15 14:48:44 Started closure detected for port: 39182
+=== RUN   TestQUICServer/Valid_Write_and_Read
+    quic_server_test.go:137: Response from server after write: Message written to database
+    quic_server_test.go:168: Response from server after read: test value
+--- PASS: TestQUICServer (0.01s)
+    --- PASS: TestQUICServer/Valid_Write_and_Read (0.00s)
+=== RUN   TestUDPServer
+2024/09/15 14:48:44 Starting UDP server on port: 7576
+2024/09/15 14:48:44 Awaiting for started closure...
+2024/09/15 14:48:44 Started closure detected for port: 7576
+=== RUN   TestUDPServer/Valid_Write_and_Read
+2024/09/15 14:48:44 Starting gnet server...
+2024/09/15 14:48:44 UDP Server started on udp://127.0.0.1:7576
+2024/09/15 14:48:44 UDP Server is listening on 127.0.0.1:7576
+2024/09/15 14:48:44 
+    udp_server_test.go:191: Failed to read from UDP server: read udp 127.0.0.1:40975->127.0.0.1:7576: recvfrom: connection refused
+=== RUN   TestUDPServer/Invalid_Key_Length_(Too_Short)
+    udp_server_test.go:188: Expected failure occurred: read udp 127.0.0.1:40975->127.0.0.1:7576: i/o timeout
+=== RUN   TestUDPServer/Invalid_Handler_Type
+    udp_server_test.go:188: Expected failure occurred: read udp 127.0.0.1:40975->127.0.0.1:7576: i/o timeout
+=== RUN   TestUDPServer/Empty_Data
+    udp_server_test.go:188: Expected failure occurred: read udp 127.0.0.1:40975->127.0.0.1:7576: i/o timeout
+--- FAIL: TestUDPServer (3.01s)
+    --- FAIL: TestUDPServer/Valid_Write_and_Read (0.00s)
+    --- PASS: TestUDPServer/Invalid_Key_Length_(Too_Short) (1.00s)
+    --- PASS: TestUDPServer/Invalid_Handler_Type (1.00s)
+    --- PASS: TestUDPServer/Empty_Data (1.00s)
+=== RUN   TestUDSServer
+2024/09/15 14:48:47 Starting UDS server on socket: /tmp/fdb_test.sock
+2024/09/15 14:48:47 Awaiting for started closure...
+2024/09/15 14:48:47 Starting gnet server...
+2024/09/15 14:48:47 UDS Server started on unix:///tmp/fdb_test.sock
+2024/09/15 14:48:47 UDS Server is listening on /tmp/fdb_test.sock
+signal: interrupt
+FAIL	github.com/unpackdev/fdb	35.419s
