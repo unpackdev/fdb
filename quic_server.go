@@ -4,13 +4,16 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/pkg/errors"
 	"github.com/quic-go/quic-go"
+	"io"
 	"log"
+	"strings"
 	"sync"
 )
 
 // Handler function type for QUIC
-type QuicHandler func(sess quic.Connection, stream quic.Stream)
+type QuicHandler func(sess quic.Connection, stream quic.Stream, message *Message)
 
 // QuicServer struct represents the QUIC server
 type QuicServer struct {
@@ -83,55 +86,83 @@ func (s *QuicServer) acceptConnections() {
 	}
 }
 
-// handleConnection handles individual QUIC connections
 func (s *QuicServer) handleConnection(conn quic.Connection) {
 	defer s.wg.Done()
 
+	// Continuously accept and handle new streams on the connection
 	for {
 		stream, err := conn.AcceptStream(context.Background())
 		if err != nil {
+			// Check if the error is a QUIC ApplicationError with code 0x0 (connection closed normally)
+			var appErr *quic.ApplicationError
+			if errors.As(err, &appErr) && appErr.ErrorCode == 0x0 {
+				// Suppress logging for this specific error
+				return
+			}
+
+			// Check if it's the specific "use of closed network connection" error
+			if isClosedNetworkConnectionError(err) {
+				// Suppress logging for this specific error
+				return
+			}
+
+			// Log other errors
 			log.Printf("Error accepting QUIC stream: %v", err)
-			return
+			return // Exit if there's an error or the connection is closed
 		}
 
 		s.wg.Add(1)
-		go s.handleStream(conn, stream)
+		go s.handleStream(conn, stream) // Handle each stream in a separate goroutine
 	}
+}
+
+// isClosedNetworkConnectionError checks if the error is the "use of closed network connection" error.
+func isClosedNetworkConnectionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	// Check for the specific error message
+	return strings.Contains(err.Error(), "use of closed network connection")
 }
 
 // handleStream handles incoming QUIC streams
 func (s *QuicServer) handleStream(conn quic.Connection, stream quic.Stream) {
 	defer s.wg.Done()
 
-	// Read the first byte to determine the action type
-	buffer := make([]byte, 1)
-	_, err := stream.Read(buffer)
-	if err != nil {
-		log.Printf("Error reading action type from stream: %v", err)
-		//_ = stream.Close() // Close the stream if there's an error
-		return
+	// Continuously read from the stream until it's closed
+	for {
+		// Step 1: Read from the stream into a buffer
+		// Assuming max message size is known or stream EOF will signify message end
+		buffer := make([]byte, 4096) // Adjust the buffer size based on your requirements
+		n, err := stream.Read(buffer)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return
+			}
+			log.Printf("Error reading from stream: %v", err)
+			return
+		}
+
+		// Step 2: Decode the message from the buffer
+		message, err := Decode(buffer[:n])
+		if err != nil {
+			log.Printf("Error decoding message: %v", err)
+			return
+		}
+
+		// Step 3: Log the received message
+		//log.Printf("Received message: action=%d, key=%x, data=%s", message.Handler, message.Key, string(message.Data))
+
+		// Step 4: Look up the appropriate handler for this action
+		handler, exists := s.handlerRegistry[message.Handler]
+		if !exists {
+			log.Printf("No handler found for action type %d", message.Handler)
+			return
+		}
+
+		// Step 5: Call the handler to process the message
+		handler(conn, stream, message)
 	}
-
-	actionType, err := s.parseActionType(buffer)
-	if err != nil {
-		log.Printf("Error parsing action type: %v", err)
-		//_ = stream.Close() // Close the stream if parsing fails
-		return
-	}
-
-	// Look up the appropriate handler for this action
-	handler, exists := s.handlerRegistry[actionType]
-	if !exists {
-		log.Printf("No handler found for action type %d", actionType)
-		//_ = stream.Close() // Close the stream if no handler is found
-		return
-	}
-
-	// Log the action type and key (if available)
-	log.Printf("Handling action type: %d", actionType)
-
-	// Call the handler
-	handler(conn, stream)
 }
 
 // Stop stops the QUIC server

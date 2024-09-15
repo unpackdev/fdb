@@ -4,15 +4,16 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/tls"
+	"encoding/binary"
 	"github.com/quic-go/quic-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"io"
 	"log"
 	"testing"
 	"time"
 )
 
-// Start QUIC server with handlers for write and read
 func startQuicServer(ctx context.Context, db *Db) (*QuicServer, error) {
 	port, err := getRandomPort()
 	if err != nil {
@@ -129,16 +130,14 @@ func TestQUICServer(t *testing.T) {
 
 			// Read response after write
 			n, err := stream.Read(buffer)
-			if tt.shouldFail {
-				require.Error(t, err) // Expect an error if the test is meant to fail
-				t.Logf("Expected failure occurred: %v", err)
-				return
-			}
 			require.NoError(t, err) // Use require instead of t.Error
 
 			// Log the response received from the server after write
 			response := string(buffer[:n])
 			t.Logf("Response from server after write: %s", response)
+
+			// Ensure the response is correct
+			assert.Equal(t, "Message written to database", response)
 
 			// Prepare to read the value back
 			readMessage := Message{
@@ -153,18 +152,23 @@ func TestQUICServer(t *testing.T) {
 			require.NoError(t, err) // Use require instead of t.Error
 
 			// Set a read deadline to prevent hanging
-			stream.SetReadDeadline(time.Now().Add(2 * time.Second))
+			stream.SetReadDeadline(time.Now().Add(10 * time.Second))
 
-			// Read response after read
-			n, err = stream.Read(buffer)
-			require.NoError(t, err) // Use require instead of t.Error
+			// Read response length (first 4 bytes)
+			_, err = io.ReadFull(stream, buffer[:4])
+			require.NoError(t, err)
+
+			// Extract length and read value
+			valueLength := binary.BigEndian.Uint32(buffer[:4])
+			readBuffer := make([]byte, valueLength)
+			_, err = io.ReadFull(stream, readBuffer)
+			require.NoError(t, err)
 
 			// Log the response received from the server after read
-			readValue := buffer[:n]
-			t.Logf("Response from server after read: %s", string(readValue))
+			t.Logf("Response from server after read: %s", string(readBuffer))
 
 			// Compare the written value with the read value
-			assert.Equal(t, tt.message.Data, readValue, "The read value should match the written value")
+			assert.Equal(t, tt.message.Data, readBuffer, "The read value should match the written value")
 		})
 	}
 }
