@@ -2,7 +2,7 @@
 
 Something about this database like fast database or f**k database idk...
 
-## QUIC
+## QUIC (HTTP/3)
 
 https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes
 
@@ -10,6 +10,10 @@ https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes
 sysctl -w net.core.rmem_max=7500000
 sysctl -w net.core.wmem_max=7500000
 ```
+
+## IDEAS
+
+- P2P Sync... (Supervisors vs. Readers a.k.a. validators vs clients)
 
 
 ## Unit Tests
