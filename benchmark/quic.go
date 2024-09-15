@@ -10,7 +10,15 @@ import (
 	transport_quic "github.com/unpackdev/fdb/transports/quic"
 	"github.com/unpackdev/fdb/types"
 	"io"
+	"sync"
 )
+
+// Buffer pool for reusing buffers
+var bufferPool = sync.Pool{
+	New: func() interface{} {
+		return make([]byte, 1024)
+	},
+}
 
 // QuicSuite represents the QUIC-specific benchmark suite.
 type QuicSuite struct {
@@ -73,8 +81,12 @@ func (qs *QuicSuite) Stop() {
 	}
 }
 
-// SetupClient sets up a QUIC client and stream. It should be called before running benchmarks.
+// SetupClient sets up a QUIC client and stream only once.
 func (qs *QuicSuite) SetupClient(ctx context.Context) error {
+	if qs.client != nil && qs.stream != nil {
+		return nil // Already setup, reuse client and stream
+	}
+
 	serverAddr := qs.quicServer.Addr()
 
 	clientTLSConfig := &tls.Config{
@@ -99,14 +111,14 @@ func (qs *QuicSuite) SetupClient(ctx context.Context) error {
 	return nil
 }
 
-// Run sends a single message through an open QUIC stream and waits for a response.
+// Run sends a single message through a QUIC stream sequentially.
 func (qs *QuicSuite) Run(ctx context.Context) error {
 	// Check if stream is initialized
 	if qs.stream == nil {
 		return fmt.Errorf("stream is not initialized")
 	}
 
-	// Send the message
+	// Send the write message
 	message := createWriteMessage()
 	encodedMessage, err := message.Encode()
 	if err != nil {
@@ -118,8 +130,11 @@ func (qs *QuicSuite) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to write message to server: %w", err)
 	}
 
-	// Simulate reading the response
-	buffer := make([]byte, 1024)
+	// Reuse buffer from pool
+	buffer := bufferPool.Get().([]byte)
+	defer bufferPool.Put(buffer) // Return buffer to pool after use
+
+	// Read the response
 	_, err = qs.stream.Read(buffer)
 	if err != nil {
 		return fmt.Errorf("failed to read response: %w", err)

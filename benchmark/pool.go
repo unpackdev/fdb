@@ -29,6 +29,7 @@ func NewClientPool(totalClients, messagesPerClient int, report *Report) *ClientP
 
 // Start sends messages concurrently using the pool of clients.
 func (p *ClientPool) Start(ctx context.Context, suite TransportSuite) error {
+	p.report.TotalClients = p.totalClients // Set total clients here
 	p.poolWg.Add(p.totalClients)
 	startTime := time.Now()
 
@@ -46,22 +47,20 @@ func (p *ClientPool) Start(ctx context.Context, suite TransportSuite) error {
 func (p *ClientPool) runClient(ctx context.Context, clientID int, suite TransportSuite) {
 	defer p.poolWg.Done()
 
-	// Setup client and stream
 	err := suite.SetupClient(ctx)
 	if err != nil {
 		fmt.Printf("Client %d setup failed: %v\n", clientID, err)
 		return
 	}
 
+	tempLatencyData := make([]time.Duration, 0, p.messagesPerClient)
+
 	for i := 0; i < p.messagesPerClient; i++ {
 		messageStartTime := time.Now()
 
 		err := suite.Run(ctx)
 		latency := time.Since(messageStartTime)
-
-		p.latencyMutex.Lock()
-		p.latencyData = append(p.latencyData, latency)
-		p.latencyMutex.Unlock()
+		tempLatencyData = append(tempLatencyData, latency)
 
 		if err != nil {
 			fmt.Printf("Client %d, Message %d failed: %v\n", clientID+1, i+1, err)
@@ -70,6 +69,11 @@ func (p *ClientPool) runClient(ctx context.Context, clientID int, suite Transpor
 			p.report.SuccessMessages++
 		}
 	}
+
+	// Append the latency data in one go
+	p.latencyMutex.Lock()
+	p.latencyData = append(p.latencyData, tempLatencyData...)
+	p.latencyMutex.Unlock()
 }
 
 // Finalize aggregates the latency data and updates the benchmark report.
