@@ -12,7 +12,7 @@ import (
 )
 
 // Start UDS server function with handlers for write and read
-func startUDSServer(ctx context.Context, db *Db) (*UDSServer, error) {
+func startUDSServer(ctx context.Context, db Provider) (*UDSServer, error) {
 	socketPath := "/tmp/fdb_test.sock"
 	log.Printf("Starting UDS server on socket: %s", socketPath)
 

@@ -7,11 +7,11 @@ import (
 
 // ReadHandler struct with MDBX database passed in
 type ReadHandler struct {
-	db *Db // MDBX database instance
+	db Provider // MDBX database instance
 }
 
 // NewReadHandler creates a new ReadHandler with an MDBX database
-func NewReadHandler(db *Db) *ReadHandler {
+func NewReadHandler(db Provider) *ReadHandler {
 	return &ReadHandler{
 		db: db,
 	}

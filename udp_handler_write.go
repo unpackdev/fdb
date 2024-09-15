@@ -7,11 +7,11 @@ import (
 
 // WriteHandler struct with MDBX database passed in
 type WriteHandler struct {
-	db *Db // Pass the MDBX database instance here
+	db Provider // Pass the MDBX database instance here
 }
 
 // NewWriteHandler creates a new WriteHandler with an MDBX database
-func NewWriteHandler(db *Db) *WriteHandler {
+func NewWriteHandler(db Provider) *WriteHandler {
 	return &WriteHandler{
 		db: db,
 	}

@@ -8,11 +8,11 @@ import (
 type Manager struct {
 	ctx  context.Context
 	opts MdbxNodes
-	dbs  map[DbType]*Db
+	dbs  map[DbType]Provider
 }
 
 func NewManager(ctx context.Context, opts MdbxNodes) (*Manager, error) {
-	dbs := make(map[DbType]*Db)
+	dbs := make(map[DbType]Provider)
 	for _, node := range opts {
 		db, err := NewDb(ctx, node)
 		if err != nil {
@@ -23,7 +23,7 @@ func NewManager(ctx context.Context, opts MdbxNodes) (*Manager, error) {
 	return &Manager{ctx: ctx, opts: opts, dbs: dbs}, nil
 }
 
-func (m *Manager) GetDb(name DbType) (*Db, error) {
+func (m *Manager) GetDb(name DbType) (Provider, error) {
 	db, ok := m.dbs[name]
 	if !ok {
 		return nil, fmt.Errorf("mdbx database not found: %s", name)

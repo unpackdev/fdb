@@ -14,7 +14,7 @@ type Db struct {
 	dbi  mdbx.DBI
 }
 
-func NewDb(ctx context.Context, opts MdbxNode) (*Db, error) {
+func NewDb(ctx context.Context, opts MdbxNode) (Provider, error) {
 	env, err := mdbx.NewEnv()
 	if err != nil {
 		return nil, err

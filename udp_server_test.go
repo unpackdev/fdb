@@ -29,7 +29,7 @@ func getRandomPort() (int, error) {
 }
 
 // Start UDP server function with handlers for write and read
-func startUDPServer(ctx context.Context, db *Db) (*UdpServer, error) {
+func startUDPServer(ctx context.Context, db Provider) (*UdpServer, error) {
 	port, err := getRandomPort()
 	if err != nil {
 		return nil, err

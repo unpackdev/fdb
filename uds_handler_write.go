@@ -7,11 +7,11 @@ import (
 
 // UDSWriteHandler struct with MDBX database passed in
 type UDSWriteHandler struct {
-	db *Db // MDBX database instance
+	db Provider // MDBX database instance
 }
 
 // NewUDSWriteHandler creates a new UDSWriteHandler with an MDBX database
-func NewUDSWriteHandler(db *Db) *UDSWriteHandler {
+func NewUDSWriteHandler(db Provider) *UDSWriteHandler {
 	return &UDSWriteHandler{
 		db: db,
 	}

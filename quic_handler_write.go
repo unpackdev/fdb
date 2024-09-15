@@ -7,11 +7,11 @@ import (
 
 // QuicWriteHandler struct with MDBX database passed in
 type QuicWriteHandler struct {
-	db *Db // Pass the MDBX database instance here
+	db Provider // Pass the MDBX database instance here
 }
 
 // NewQuicWriteHandler creates a new QuicWriteHandler with an MDBX database
-func NewQuicWriteHandler(db *Db) *QuicWriteHandler {
+func NewQuicWriteHandler(db Provider) *QuicWriteHandler {
 	return &QuicWriteHandler{
 		db: db,
 	}

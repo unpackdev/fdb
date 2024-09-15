@@ -8,11 +8,11 @@ import (
 
 // QuicReadHandler struct with MDBX database passed in
 type QuicReadHandler struct {
-	db *Db // MDBX database instance
+	db Provider // MDBX database instance
 }
 
 // NewQuicReadHandler creates a new QuicReadHandler with an MDBX database
-func NewQuicReadHandler(db *Db) *QuicReadHandler {
+func NewQuicReadHandler(db Provider) *QuicReadHandler {
 	return &QuicReadHandler{
 		db: db,
 	}

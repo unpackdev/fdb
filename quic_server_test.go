@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-func startQuicServer(ctx context.Context, db *Db) (*QuicServer, error) {
+func startQuicServer(ctx context.Context, db Provider) (*QuicServer, error) {
 	port, err := getRandomPort()
 	if err != nil {
 		return nil, err

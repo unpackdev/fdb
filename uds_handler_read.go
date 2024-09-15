@@ -7,11 +7,11 @@ import (
 
 // UDSReadHandler struct with MDBX database passed in
 type UDSReadHandler struct {
-	db *Db // MDBX database instance
+	db Provider // MDBX database instance
 }
 
 // NewUDSReadHandler creates a new UDSReadHandler with an MDBX database
-func NewUDSReadHandler(db *Db) *UDSReadHandler {
+func NewUDSReadHandler(db Provider) *UDSReadHandler {
 	return &UDSReadHandler{
 		db: db,
 	}
