@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"github.com/quic-go/quic-go"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"log"
 	"testing"
 	"time"
@@ -58,11 +59,11 @@ func TestQUICServer(t *testing.T) {
 
 	// Get the database from the manager
 	db, err := manager.GetDb("test")
-	assert.NoError(t, err)
+	require.NoError(t, err) // Use require instead of t.Fatal
 	defer db.Destroy()
 
 	server, sErr := startQuicServer(ctx, db)
-	assert.NoError(t, sErr)
+	require.NoError(t, sErr) // Use require instead of t.Fatal
 
 	clientTLSConfig := &tls.Config{
 		InsecureSkipVerify: true,
@@ -71,9 +72,7 @@ func TestQUICServer(t *testing.T) {
 
 	// Create the QUIC client
 	client, err := quic.DialAddr(context.Background(), server.Addr(), clientTLSConfig, nil)
-	if err != nil {
-		t.Fatalf("Failed to create QUIC client: %v", err)
-	}
+	require.NoError(t, err) // Use require instead of t.Fatal
 	defer client.CloseWithError(0, "closing connection")
 
 	// Table of test cases
@@ -101,102 +100,64 @@ func TestQUICServer(t *testing.T) {
 			// Generate a random 32-byte key
 			var keyBytes [32]byte
 			_, err := rand.Read(keyBytes[:])
-			if err != nil {
-				t.Fatalf("Failed to generate random key: %v", err)
-			}
+			require.NoError(t, err) // Use require instead of t.Fatal
 			tt.message.Key = keyBytes
 
 			// Encode the message
 			encodedMessage, err := tt.message.Encode()
-			if err != nil {
-				t.Fatalf("Failed to encode message: %v", err)
-			}
+			require.NoError(t, err) // Use require instead of t.Fatal
 
 			// Modify the encoded message if needed
 			if tt.modifyMessage != nil {
 				encodedMessage = tt.modifyMessage(encodedMessage)
 			}
 
-			// Open a new stream to the QUIC server
+			// Open a single stream for both write and read operations
 			stream, err := client.OpenStreamSync(context.Background())
-			if err != nil {
-				t.Fatalf("Failed to open stream: %v", err)
-			}
+			require.NoError(t, err) // Use require instead of t.Fatal
 			defer stream.Close()
 
-			// Send the message to the server
+			// Send the write message to the server
 			_, err = stream.Write(encodedMessage)
-			if err != nil {
-				t.Errorf("Failed to write to QUIC server: %v", err)
-				return
-			}
-
-			// Set a read deadline to prevent hanging
-			stream.SetReadDeadline(time.Now().Add(5 * time.Second)) // Increased to 5 seconds
+			require.NoError(t, err) // Use require instead of t.Error
 
 			// Prepare buffer for reading response
 			buffer := make([]byte, 1024)
 
+			// Set a read deadline to prevent hanging
+			stream.SetReadDeadline(time.Now().Add(5 * time.Second))
+
 			// Read response after write
 			n, err := stream.Read(buffer)
-			if err != nil {
-				if tt.shouldFail {
-					t.Logf("Expected failure occurred: %v", err)
-					return
-				}
-				t.Errorf("Failed to read from QUIC server: %v", err)
+			if tt.shouldFail {
+				require.Error(t, err) // Expect an error if the test is meant to fail
+				t.Logf("Expected failure occurred: %v", err)
 				return
 			}
+			require.NoError(t, err) // Use require instead of t.Error
 
 			// Log the response received from the server after write
 			response := string(buffer[:n])
 			t.Logf("Response from server after write: %s", response)
 
-			// Ensure stream is closed properly
-			defer stream.Close()
-
-			// Validate the response
-			if tt.shouldFail {
-				if response == "Message written to database" {
-					t.Errorf("Expected failure, but write succeeded")
-				} else {
-					t.Logf("Received expected error response: %s", response)
-				}
-				return
-			}
-
-			// For valid write operations, proceed to read the value back
+			// Prepare to read the value back
 			readMessage := Message{
 				Handler: ReadHandlerType,
 				Key:     tt.message.Key,
 			}
 			encodedReadMessage, err := readMessage.Encode()
-			if err != nil {
-				t.Fatalf("Failed to encode read message: %v", err)
-			}
+			require.NoError(t, err) // Use require instead of t.Fatal
 
-			// Open a new stream for the read operation
-			stream, err = client.OpenStreamSync(context.Background())
-			if err != nil {
-				t.Fatalf("Failed to open stream: %v", err)
-			}
-			defer stream.Close()
-
+			// Send the read message to the server on the same stream
 			_, err = stream.Write(encodedReadMessage)
-			if err != nil {
-				t.Errorf("Failed to write read request to QUIC server: %v", err)
-				return
-			}
+			require.NoError(t, err) // Use require instead of t.Error
 
 			// Set a read deadline to prevent hanging
 			stream.SetReadDeadline(time.Now().Add(2 * time.Second))
 
 			// Read response after read
 			n, err = stream.Read(buffer)
-			if err != nil {
-				t.Errorf("Failed to read from QUIC server: %v", err)
-				return
-			}
+			require.NoError(t, err) // Use require instead of t.Error
 
 			// Log the response received from the server after read
 			readValue := buffer[:n]

@@ -108,14 +108,14 @@ func (s *QuicServer) handleStream(conn quic.Connection, stream quic.Stream) {
 	_, err := stream.Read(buffer)
 	if err != nil {
 		log.Printf("Error reading action type from stream: %v", err)
-		_ = stream.Close() // Close the stream if there's an error
+		//_ = stream.Close() // Close the stream if there's an error
 		return
 	}
 
 	actionType, err := s.parseActionType(buffer)
 	if err != nil {
 		log.Printf("Error parsing action type: %v", err)
-		_ = stream.Close() // Close the stream if parsing fails
+		//_ = stream.Close() // Close the stream if parsing fails
 		return
 	}
 
@@ -123,7 +123,7 @@ func (s *QuicServer) handleStream(conn quic.Connection, stream quic.Stream) {
 	handler, exists := s.handlerRegistry[actionType]
 	if !exists {
 		log.Printf("No handler found for action type %d", actionType)
-		_ = stream.Close() // Close the stream if no handler is found
+		//_ = stream.Close() // Close the stream if no handler is found
 		return
 	}
 
@@ -132,7 +132,6 @@ func (s *QuicServer) handleStream(conn quic.Connection, stream quic.Stream) {
 
 	// Call the handler
 	handler(conn, stream)
-
 }
 
 // Stop stops the QUIC server
