@@ -53,6 +53,7 @@ func (s *UdpServer) Start() error {
 		gnet.WithReusePort(true),
 		gnet.WithSocketRecvBuffer(1024*64),
 		gnet.WithLockOSThread(true),
+		gnet.WithTicker(true),
 	)
 }
 
