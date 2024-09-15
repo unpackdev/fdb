@@ -14,7 +14,7 @@ sysctl -w net.core.wmem_max=7500000
 ## IDEAS
 
 - P2P Sync... (Supervisors vs. Readers a.k.a. validators vs clients)
-
+- Could be grpc sync as well... Need to see complexity vs. benefits...
 
 ## Unit Tests
 
