@@ -1,4 +1,4 @@
-package fdb
+package transports
 
 import (
 	"errors"
@@ -6,19 +6,19 @@ import (
 	"sync"
 )
 
-// TransportManager is responsible for managing different transport servers
-type TransportManager struct {
+// Manager is responsible for managing different transport servers
+type Manager struct {
 	transports map[types.TransportType]Transport // Holds references to different transports
 	mu         sync.Mutex
 }
 
-func NewTransportManager() *TransportManager {
-	return &TransportManager{
+func NewManager() *Manager {
+	return &Manager{
 		transports: make(map[types.TransportType]Transport),
 	}
 }
 
-func (tm *TransportManager) RegisterTransport(tType types.TransportType, transport Transport) error {
+func (tm *Manager) RegisterTransport(tType types.TransportType, transport Transport) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
@@ -30,7 +30,7 @@ func (tm *TransportManager) RegisterTransport(tType types.TransportType, transpo
 	return nil
 }
 
-func (tm *TransportManager) GetTransport(tType types.TransportType) (Transport, error) {
+func (tm *Manager) GetTransport(tType types.TransportType) (Transport, error) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
@@ -42,7 +42,7 @@ func (tm *TransportManager) GetTransport(tType types.TransportType) (Transport, 
 	return transport, nil
 }
 
-func (tm *TransportManager) DeregisterTransport(tType types.TransportType) error {
+func (tm *Manager) DeregisterTransport(tType types.TransportType) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 

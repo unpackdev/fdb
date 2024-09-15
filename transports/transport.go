@@ -1,3 +1,3 @@
-package fdb
+package transports
 
 type Transport interface{}
