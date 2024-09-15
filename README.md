@@ -76,8 +76,6 @@ graph TD;
 4. **Handlers**: Each server has a `WriteHandler` and `ReadHandler` that interact with the `MDBX` database to set and get key-value pairs.
 5. **Connection Handling**: This is where the incoming connections are processed. It uses `gnet` and `QUIC` to handle streams or frames and react to incoming data.
 
-This architecture provides a high-level overview of the `fdb` system. You can copy this into your README, and GitHub will render the mermaid diagram automatically.
-
 
 ## GNET
 
