@@ -27,7 +27,6 @@ func New(ctx context.Context, cnf config.Config) (*FDB, error) {
 		transportManager: transportManager,
 	}
 
-	// Register transports based on config
 	for _, transport := range cnf.Transports {
 		switch t := transport.Config.(type) {
 		case config.QuicTransport:
@@ -56,6 +55,6 @@ func New(ctx context.Context, cnf config.Config) (*FDB, error) {
 }
 
 // GetTransportByType allows retrieval of specific transport from the manager
-func (fdb *FDB) GetTransportByType(tType types.TransportType) (interface{}, error) {
+func (fdb *FDB) GetTransportByType(tType types.TransportType) (Transport, error) {
 	return fdb.transportManager.GetTransport(tType)
 }
