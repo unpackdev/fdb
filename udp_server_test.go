@@ -5,19 +5,42 @@ import (
 	"crypto/rand"
 	"github.com/stretchr/testify/assert"
 	"log"
+	"math/big"
 	"net"
 	"testing"
 	"time"
 )
 
+// Generate a random port in the range 1024 to 65535
+func getRandomPort() (int, error) {
+	// The valid port range is 1024–65535
+	minPort := 1024
+	maxPort := 65535
+	portRange := big.NewInt(int64(maxPort - minPort + 1))
+
+	// Generate a random number in the port range
+	randPort, err := rand.Int(rand.Reader, portRange)
+	if err != nil {
+		return 0, err
+	}
+
+	// Return the port number within the valid range
+	return minPort + int(randPort.Int64()), nil
+}
+
 // Start UDP server function with handlers for write and read
 func startUDPServer(ctx context.Context, db *Db) (*UdpServer, error) {
-	server, err := NewUdpServer("127.0.0.1", 8781)
+	port, err := getRandomPort()
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("Starting UDP server on port: %d", port)
+
+	server, err := NewUdpServer("127.0.0.1", port)
 	if err != nil {
 		return nil, err
 	}
 
-	// Register handlers with actual WriteHandler and ReadHandler
 	wHandler := NewWriteHandler(db)
 	server.RegisterHandler(WriteHandlerType, wHandler.HandleMessage)
 
@@ -25,17 +48,19 @@ func startUDPServer(ctx context.Context, db *Db) (*UdpServer, error) {
 	server.RegisterHandler(ReadHandlerType, rHandler.HandleMessage)
 
 	go func() {
+		log.Println("Starting gnet server...")
 		err := server.Start()
 		if err != nil {
 			log.Fatalf("Failed to start server: %v", err)
 		}
+		log.Println("gnet server started.")
 	}()
 
 	log.Println("Awaiting for started closure...")
 	// Wait for the server to signal that it has started
-	<-server.WaitStarted()
+	//<-server.WaitStarted()
 
-	log.Println("Started closure detected...")
+	log.Println("Started closure detected for port:", port)
 
 	return server, nil
 }

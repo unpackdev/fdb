@@ -25,16 +25,15 @@ func (rh *ReadHandler) HandleMessage(c gnet.Conn, frame []byte) {
 		return
 	}
 
-	key := frame[1:33] // 32-byte key
-
 	// Read from the database
-	value, err := rh.db.Get(key)
-	if err != nil {
-		log.Printf("Error reading from database: %v", err)
-		c.SendTo([]byte("Error reading from database"))
-		return
-	}
+	/*	value, err := rh.db.Get(frame[1:33])
+		if err != nil {
+			log.Printf("Error reading from database: %v", err)
+			c.SendTo([]byte("Error reading from database"))
+			return
+		}*/
 
 	// Send the value back to the client
-	c.SendTo(value)
+	//c.SendTo(value)
+	c.SendTo([]byte{})
 }

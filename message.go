@@ -1,7 +1,6 @@
 package fdb
 
 import (
-	"bytes"
 	"fmt"
 )
 
@@ -14,24 +13,19 @@ type Message struct {
 
 // Encode encodes the Message struct into a byte slice
 func (m *Message) Encode() ([]byte, error) {
-	buf := new(bytes.Buffer)
+	msgLen := 1 + 32 + len(m.Data)
+	buf := make([]byte, msgLen)
 
-	// Write the HandlerType (1 byte)
-	if err := buf.WriteByte(byte(m.Handler)); err != nil {
-		return nil, fmt.Errorf("failed to encode handler: %w", err)
-	}
+	// Set handler type
+	buf[0] = byte(m.Handler)
 
-	// Write the 32-byte key
-	if _, err := buf.Write(m.Key[:]); err != nil {
-		return nil, fmt.Errorf("failed to encode key: %w", err)
-	}
+	// Copy the 32-byte key
+	copy(buf[1:33], m.Key[:])
 
-	// Write the data (variable length)
-	if _, err := buf.Write(m.Data); err != nil {
-		return nil, fmt.Errorf("failed to encode data: %w", err)
-	}
+	// Copy the data
+	copy(buf[33:], m.Data)
 
-	return buf.Bytes(), nil
+	return buf, nil
 }
 
 // Decode decodes a byte slice into a Message struct
@@ -40,15 +34,14 @@ func Decode(data []byte) (*Message, error) {
 		return nil, fmt.Errorf("data too short, must be at least 33 bytes")
 	}
 
-	msg := &Message{}
+	msg := &Message{
+		Handler: HandlerType(data[0]),
+	}
 
-	// Read the HandlerType (first byte)
-	msg.Handler = HandlerType(data[0])
-
-	// Read the 32-byte key
+	// Copy the 32-byte key
 	copy(msg.Key[:], data[1:33])
 
-	// Read the remaining data
+	// Assign the remaining data directly without copying
 	msg.Data = data[33:]
 
 	return msg, nil

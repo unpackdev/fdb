@@ -5,4 +5,7 @@ example:
 test:
 	go test -v -cover
 
-.PHONY: example
+benchmark:
+	go test -run=^$$ -bench=BenchmarkUDPServerWrite -v
+
+.PHONY: example, test, benchmark

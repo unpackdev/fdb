@@ -36,24 +36,28 @@ func setupTestManager(t *testing.T) *Manager {
 	return manager
 }
 
-func setupBenchmarkTestManager(t *testing.B) *Manager {
+// setupBenchmarkTestManager sets up the database manager for benchmark tests.
+// It ensures that the database path is clean by deleting any existing data before starting.
+func setupBenchmarkTestManager(b *testing.B, dbPath string, dbName string) *Manager {
 	ctx := context.Background()
 
-	// Create a temporary directory for the test database
-	path := "./testdb"
-	err := os.Mkdir(path, 0755)
-	assert.NoError(t, err)
+	// Delete any existing database path to ensure a clean state
+	err := os.RemoveAll(dbPath)
+	assert.NoError(b, err, "Failed to remove existing database path")
+
+	// Create a new directory for the test database
+	err = os.Mkdir(dbPath, 0755)
+	assert.NoError(b, err, "Failed to create database directory")
 
 	// Create options for the database
 	opts := MdbxNodes{
-		{Path: path, Name: "test"},
+		{Path: dbPath, Name: dbName},
 	}
 
-	// Initialize Manager
+	// Initialize the Manager
 	manager, err := NewManager(ctx, opts)
-	assert.NoError(t, err)
+	assert.NoError(b, err, "Failed to initialize database manager")
 
-	// Teardown function to clean up after the test
 	return manager
 }
 

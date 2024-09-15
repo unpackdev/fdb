@@ -2,7 +2,9 @@ package fdb
 
 import (
 	"context"
+	"crypto/rand"
 	"github.com/stretchr/testify/assert"
+	"log"
 	"net"
 	"testing"
 	"time"
@@ -14,17 +16,19 @@ func BenchmarkUDPServerWrite(b *testing.B) {
 	defer cancel()
 
 	// Setup the MDBX manager and database
-	manager := setupBenchmarkTestManager(b)
+	manager := setupBenchmarkTestManager(b, "/tmp/fdb", "benchmark")
 
 	// Get the database from the manager
-	db, err := manager.GetDb("test")
+	db, err := manager.GetDb("benchmark")
 	assert.NoError(b, err)
 	defer db.Destroy()
 
 	server, sErr := startUDPServer(ctx, db)
 	assert.NoError(b, sErr)
 
-	// Wait for the server to start
+	log.Println("STARTED UDP ABOUT TO RESOLVE ADDR", server.Addr().String())
+
+	// Add a small delay before resolving the address to ensure server is ready
 	time.Sleep(100 * time.Millisecond)
 
 	// Resolve the server address
@@ -40,8 +44,17 @@ func BenchmarkUDPServerWrite(b *testing.B) {
 	}
 	defer client.Close()
 
-	// Prepare test data
-	key := [32]byte{}                  // 32-byte key (can be generated or hardcoded)
+	log.Println("STARTING...")
+
+	// Generate a random 32-byte key
+	var keyBytes [32]byte
+	_, err = rand.Read(keyBytes[:])
+	if err != nil {
+		b.Fatalf("Failed to generate random key: %v", err)
+	}
+	key := keyBytes
+
+	// Ensure the data is non-empty
 	value := []byte("benchmark value") // Example value to write
 
 	// Create the message
@@ -57,8 +70,6 @@ func BenchmarkUDPServerWrite(b *testing.B) {
 		b.Fatalf("Failed to encode message: %v", err)
 	}
 
-	time.Sleep(100 * time.Millisecond) // Allow server to fully start
-
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
@@ -69,19 +80,29 @@ func BenchmarkUDPServerWrite(b *testing.B) {
 			continue
 		}
 
-		// Optionally read the response from the server (if any)
-		// buffer := make([]byte, 1024)
-		// n, err := client.Read(buffer)
-		// if err != nil {
-		//     b.Errorf("Failed to read from UDP server: %v", err)
-		//     continue
-		// }
-		// Use response if needed
+		/*// Read the response from the server
+		buffer := make([]byte, 1024)
+		rdErr := client.SetReadDeadline(time.Now().Add(1 * time.Second))
+		assert.NoError(b, rdErr)
+
+		_, _, rErr := client.ReadFromUDP(buffer)
+		if rErr != nil {
+			b.Errorf("Failed to read from UDP server: %v", rErr)
+			continue
+		}*/
+		// Optionally process the response
+		// response := string(buffer[:n])
+		// b.Logf("Received response: %s", response)
 	}
 
 	b.StopTimer()
 
 	// Stop the server
 	server.Stop()
-	time.Sleep(100 * time.Millisecond) // Allow some time for the server to stop
+
+	// Wait for a bit to ensure the server has properly stopped
+	log.Println("Waiting for the server to stop...")
+	time.Sleep(200 * time.Millisecond) // Adjust timing if needed
+
+	log.Println("Server has been stopped.")
 }

@@ -15,7 +15,7 @@ func BenchmarkUDPServerRead(b *testing.B) {
 	defer cancel()
 
 	// Setup the MDBX manager and database
-	manager := setupBenchmarkTestManager(b)
+	manager := setupBenchmarkTestManager(b, "/tmp/fdb", "benchmark")
 
 	// Get the database from the manager
 	db, err := manager.GetDb("test")

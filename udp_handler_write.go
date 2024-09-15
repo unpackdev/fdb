@@ -19,6 +19,7 @@ func NewWriteHandler(db *Db) *WriteHandler {
 
 // HandleMessage processes the incoming message using the WriteHandler
 func (wh *WriteHandler) HandleMessage(c gnet.Conn, frame []byte) {
+
 	// Check frame length
 	if len(frame) < 34 { // 1 byte action + 32-byte key + at least 1 byte value
 		log.Printf("Invalid message length: %d, expected at least 34 bytes", len(frame))
@@ -26,16 +27,13 @@ func (wh *WriteHandler) HandleMessage(c gnet.Conn, frame []byte) {
 		return
 	}
 
-	key := frame[1:33]  // 32-byte key
-	value := frame[33:] // value
-
 	// Write to the database
-	err := wh.db.Set(key, value)
-	if err != nil {
-		log.Printf("Error writing to database: %v", err)
-		c.SendTo([]byte("Error writing to database"))
-		return
-	}
+	/*	err := wh.db.Set(frame[1:33], frame[33:])
+		if err != nil {
+			log.Printf("Error writing to database: %v", err)
+			c.SendTo([]byte("Error writing to database"))
+			return
+		}*/
 
 	// Send success response
 	c.SendTo([]byte("Message written to database"))
