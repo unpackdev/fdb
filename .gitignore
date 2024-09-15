@@ -25,5 +25,7 @@ go.work.sum
 .env
 .idea/
 
+testdb/
+
 # binaries
 example
