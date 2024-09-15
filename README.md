@@ -11,6 +11,8 @@ as a troll and actual description as this task is quite hard to achieve.
 
 Though this will be hard to achieve without DPDK. Will not overkill the prototype with it for now...
 
+**NOTE: At this moment I am adding all possible faster ways including TCP to be able do proper benchmarking first**
+
 ## QUIC (HTTP/3)
 
 https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes
