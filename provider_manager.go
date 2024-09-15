@@ -3,15 +3,16 @@ package fdb
 import (
 	"context"
 	"fmt"
+	"github.com/unpackdev/fdb/pkg/config"
 )
 
 type Manager struct {
 	ctx  context.Context
-	opts MdbxNodes
+	opts config.MdbxNodes
 	dbs  map[DbType]Provider
 }
 
-func NewManager(ctx context.Context, opts MdbxNodes) (*Manager, error) {
+func NewManager(ctx context.Context, opts config.MdbxNodes) (*Manager, error) {
 	dbs := make(map[DbType]Provider)
 	for _, node := range opts {
 		db, err := NewDb(ctx, node)

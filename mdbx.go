@@ -4,17 +4,18 @@ import (
 	"context"
 	"github.com/erigontech/mdbx-go/mdbx"
 	"github.com/pkg/errors"
+	"github.com/unpackdev/fdb/pkg/config"
 	"os"
 )
 
 type Db struct {
 	ctx  context.Context
-	opts MdbxNode
+	opts config.MdbxNode
 	env  *mdbx.Env
 	dbi  mdbx.DBI
 }
 
-func NewDb(ctx context.Context, opts MdbxNode) (Provider, error) {
+func NewDb(ctx context.Context, opts config.MdbxNode) (Provider, error) {
 	env, err := mdbx.NewEnv()
 	if err != nil {
 		return nil, err

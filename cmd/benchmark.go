@@ -3,6 +3,8 @@ package cmd
 import (
 	"fmt"
 	"github.com/unpackdev/fdb"
+	"github.com/unpackdev/fdb/pkg/config"
+	"github.com/unpackdev/fdb/pkg/types"
 	"github.com/urfave/cli/v2"
 	"log"
 	"runtime"
@@ -18,7 +20,20 @@ func BenchmarkCommand() *cli.Command {
 			// Simulate benchmarking logic here
 			fmt.Println("Running client benchmark...")
 
-			cnf := fdb.Config{}
+			cnf := config.Config{
+				Transports: []config.Transport{
+					{
+						Type:    types.QUICTransportType,
+						Enabled: true,
+						Config:  config.QuicTransport{IPv4: "127.0.0.1", Port: 4433},
+					},
+					/*					{
+										Type:    fdb.UDS,
+										Enabled: true,
+										Config:  fdb.UdsTransport{IPv4: "127.0.0.1", Port: 8000},
+									},*/
+				},
+			}
 
 			fdbc, fdbcErr := fdb.New(c.Context, cnf)
 			if fdbcErr != nil {

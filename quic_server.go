@@ -15,6 +15,25 @@ import (
 // Handler function type for QUIC
 type QuicHandler func(sess quic.Connection, stream quic.Stream, message *Message)
 
+type QuicConfig struct {
+	Type    TransportType `yaml:"type" json:"type" mapstructure:"type"`
+	Enabled bool          `yaml:"enabled" json:"enabled" mapstructure:"enabled"`
+	IPv4    string        `yaml:"ipv4" json:"ipv4" mapstructure:"ipv4"`
+	Port    int           `yaml:"port" json:"port" mapstructure:"port"`
+}
+
+func (c QuicConfig) GetType() TransportType {
+	return c.Type
+}
+
+func (c QuicConfig) IsEnabled() bool {
+	return c.Enabled
+}
+
+func (c QuicConfig) IsIPv4() bool {
+	return c.IPv4 != ""
+}
+
 // QuicServer struct represents the QUIC server
 type QuicServer struct {
 	handlerRegistry map[HandlerType]QuicHandler

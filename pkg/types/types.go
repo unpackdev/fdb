@@ -1,13 +1,14 @@
-package fdb
+package types
 
 import "fmt"
 
 type TransportType int
 
 const (
-	TransportTypeUDP TransportType = iota
-	TransportTypeQUIC
-	TransportTypeUDS
+	UDPTransportType TransportType = iota
+	QUICTransportType
+	UDSTransportType
+	TCPTransportType
 )
 
 type DbType string
