@@ -2,6 +2,14 @@
 
 Something about this database like fast database or f**k database idk...
 
+## QUIC
+
+https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes
+
+```
+sysctl -w net.core.rmem_max=7500000
+sysctl -w net.core.wmem_max=7500000
+```
 
 
 ## Unit Tests
