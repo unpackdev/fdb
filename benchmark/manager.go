@@ -9,50 +9,52 @@ import (
 // SuiteManager manages multiple benchmarking suites for different transport types.
 type SuiteManager struct {
 	fdbInstance *fdb.FDB
-	suites      map[SuiteType]TransportSuite
+	Suites      map[SuiteType]TransportSuite // Expose Suites for easy access
 }
 
-// NewSuiteManager creates a new suite manager capable of managing multiple transport-specific suites.
+// NewSuiteManager creates a new SuiteManager capable of managing multiple transport-specific suites.
 func NewSuiteManager(fdbInstance *fdb.FDB) *SuiteManager {
 	manager := &SuiteManager{
 		fdbInstance: fdbInstance,
-		suites:      make(map[SuiteType]TransportSuite),
+		Suites:      make(map[SuiteType]TransportSuite),
 	}
 
-	// Register available suites
+	// Register available suites (currently just QUIC)
 	manager.RegisterSuite(QUICSuite, NewQuicSuite(fdbInstance))
-	// Future: Register more suites like UDS here
+
+	// Future: Add other suites like UDS here
+	// manager.RegisterSuite(UDSSuite, NewUdsSuite(fdbInstance))
 
 	return manager
 }
 
 // RegisterSuite registers a transport-specific suite with the manager.
 func (sm *SuiteManager) RegisterSuite(suiteType SuiteType, suite TransportSuite) {
-	sm.suites[suiteType] = suite
+	sm.Suites[suiteType] = suite
 }
 
 // Start starts the suite for the specified SuiteType.
 func (sm *SuiteManager) Start(suiteType SuiteType) error {
-	suite, exists := sm.suites[suiteType]
+	suite, exists := sm.Suites[suiteType]
 	if !exists {
-		return fmt.Errorf("%w: %s", ErrInvalidSuiteType, suiteType)
+		return fmt.Errorf("suite type %s not found", suiteType)
 	}
 	return suite.Start()
 }
 
 // Stop stops the suite for the specified SuiteType.
 func (sm *SuiteManager) Stop(suiteType SuiteType) {
-	suite, exists := sm.suites[suiteType]
+	suite, exists := sm.Suites[suiteType]
 	if exists {
 		suite.Stop()
 	}
 }
 
-// Run runs the client benchmark for the specified SuiteType.
+// Run executes the benchmarking logic for the specified SuiteType.
 func (sm *SuiteManager) Run(ctx context.Context, suiteType SuiteType) error {
-	suite, exists := sm.suites[suiteType]
+	suite, exists := sm.Suites[suiteType]
 	if !exists {
-		return fmt.Errorf("%w: %s", ErrInvalidSuiteType, suiteType)
+		return fmt.Errorf("suite type %s not found", suiteType)
 	}
 	return suite.Run(ctx)
 }

@@ -13,18 +13,33 @@ import (
 func BenchmarkCommand() *cli.Command {
 	return &cli.Command{
 		Name:  "benchmark",
-		Usage: "Benchmark the real client",
+		Usage: "Run benchmark tests on different transport protocols",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:  "suite-type",
 				Usage: "Specify the suite type (e.g., quic)",
-				Value: "quic", // Default to quic
+				Value: "quic", // Default to QUIC
+			},
+			&cli.IntFlag{
+				Name:  "clients",
+				Usage: "Number of clients to simulate",
+				Value: 10, // Default to 10 clients
+			},
+			&cli.IntFlag{
+				Name:  "messages",
+				Usage: "Number of messages per client",
+				Value: 100, // Default to 100 messages per client
+			},
+			&cli.StringFlag{
+				Name:  "report-output",
+				Usage: "Path to save the JSON report (optional)",
+				Value: "", // Default to no export
 			},
 		},
 		Action: func(c *cli.Context) error {
-			fmt.Println("Running client benchmark...")
+			fmt.Println("Starting benchmark...")
 
-			// Configure QUIC transport
+			// Configure transports (for now just QUIC)
 			cnf := config.Config{
 				MdbxNodes: []config.MdbxNode{
 					{
@@ -53,14 +68,16 @@ func BenchmarkCommand() *cli.Command {
 			// Initialize FDB
 			fdbc, err := fdb.New(c.Context, cnf)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to initialize FDB: %w", err)
 			}
 
 			// Create a new suite manager
 			suiteManager := benchmark.NewSuiteManager(fdbc)
 
-			// Get the suite type from CLI flag
+			// Get the suite type and number of clients/messages from CLI flags
 			suiteType := benchmark.SuiteType(c.String("suite-type"))
+			totalClients := c.Int("clients")
+			messagesPerClient := c.Int("messages")
 
 			// Start the suite
 			if err := suiteManager.Start(suiteType); err != nil {
@@ -68,9 +85,28 @@ func BenchmarkCommand() *cli.Command {
 			}
 			defer suiteManager.Stop(suiteType)
 
-			// Run client-side benchmark
-			if err := suiteManager.Run(c.Context, suiteType); err != nil {
-				return fmt.Errorf("failed to run client benchmark: %w", err)
+			// Create benchmark report
+			report := benchmark.NewBenchmarkReport()
+
+			// Create client pool and start the benchmarking process
+			clientPool := benchmark.NewClientPool(totalClients, messagesPerClient, report)
+			err = clientPool.Start(c.Context, suiteManager.Suites[suiteType])
+			if err != nil {
+				return fmt.Errorf("failed to run client pool: %w", err)
+			}
+
+			// Finalize the results (latency, throughput)
+			clientPool.Finalize()
+
+			// Print report to console
+			report.PrintReport()
+
+			// Optionally export report to JSON
+			reportOutput := c.String("report-output")
+			if reportOutput != "" {
+				if err := report.ExportToJSON(reportOutput); err != nil {
+					return fmt.Errorf("failed to export report: %w", err)
+				}
 			}
 
 			return nil

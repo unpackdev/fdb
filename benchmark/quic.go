@@ -9,8 +9,6 @@ import (
 	"github.com/unpackdev/fdb"
 	"github.com/unpackdev/fdb/types"
 	"io"
-	"runtime"
-	"time"
 )
 
 // QuicSuite represents the QUIC-specific benchmark suite.
@@ -66,7 +64,7 @@ func (qs *QuicSuite) Stop() {
 	}
 }
 
-// Run runs the client-side benchmark for QUIC.
+// Run sends a message from a client to the QUIC server.
 func (qs *QuicSuite) Run(ctx context.Context) error {
 	serverAddr := qs.quicServer.Addr()
 
@@ -75,17 +73,13 @@ func (qs *QuicSuite) Run(ctx context.Context) error {
 		NextProtos:         []string{"quic-example"},
 	}
 
-	start := time.Now()
-	var memStart runtime.MemStats
-	runtime.ReadMemStats(&memStart)
-
 	client, err := quic.DialAddr(ctx, serverAddr, clientTLSConfig, nil)
 	if err != nil {
 		return fmt.Errorf("failed to dial QUIC server: %w", err)
 	}
 	defer client.CloseWithError(0, "closing connection")
 
-	stream, err := client.OpenStreamSync(context.Background())
+	stream, err := client.OpenStreamSync(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to open stream: %w", err)
 	}
@@ -107,8 +101,9 @@ func (qs *QuicSuite) Run(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to read response: %w", err)
 	}
-	fmt.Printf("Response from server: %s\n", string(buffer))
+	//fmt.Printf("Response from server: %s\n", string(buffer))
 
+	// Simulate read operation
 	readMessage := createReadMessage(message.Key)
 	encodedReadMessage, err := readMessage.Encode()
 	if err != nil {
@@ -120,25 +115,20 @@ func (qs *QuicSuite) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to write read message to server: %w", err)
 	}
 
+	// Read the data length
 	_, err = io.ReadFull(stream, buffer[:4])
 	if err != nil {
 		return fmt.Errorf("failed to read data length: %w", err)
 	}
 	valueLength := binary.BigEndian.Uint32(buffer[:4])
 
+	// Read the actual data
 	readBuffer := make([]byte, valueLength)
 	_, err = io.ReadFull(stream, readBuffer)
 	if err != nil {
 		return fmt.Errorf("failed to read value: %w", err)
 	}
-	fmt.Printf("Data read from server: %s\n", string(readBuffer))
-
-	var memEnd runtime.MemStats
-	runtime.ReadMemStats(&memEnd)
-
-	elapsed := time.Since(start)
-	fmt.Printf("Benchmark completed in %s\n", elapsed)
-	fmt.Printf("Memory used: %d bytes\n", memEnd.Alloc-memStart.Alloc)
+	//fmt.Printf("Data read from server: %s\n", string(readBuffer))
 
 	return nil
 }

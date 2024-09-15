@@ -141,9 +141,24 @@ func (s *QuicServer) handleStream(conn quic.Connection, stream quic.Stream) {
 		buffer := make([]byte, 4096) // Adjust the buffer size based on your requirements
 		n, err := stream.Read(buffer)
 		if err != nil {
-			if errors.Is(err, io.EOF) {
+			// Check if the error is a QUIC ApplicationError with code 0x0 (connection closed normally)
+			var appErr *quic.ApplicationError
+			if errors.As(err, &appErr) && appErr.ErrorCode == 0x0 {
+				// Suppress logging for this specific error
 				return
 			}
+
+			// Handle specific "use of closed network connection" error
+			if isClosedNetworkConnectionError(err) {
+				return
+			}
+
+			// Handle other EOF or connection close errors
+			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, quic.ErrServerClosed) {
+				return
+			}
+
+			// Log other errors
 			log.Printf("Error reading from stream: %v", err)
 			return
 		}
