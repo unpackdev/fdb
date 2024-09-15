@@ -1,6 +1,11 @@
 # (f)db
 
-Something about this database like fast database or f**k database idk...
+This is currently a prototype, with the idea of building incredibly fast transport layers on 
+top of key-value (KV) databases. The goal is to allow one or multiple instances of these 
+databases to be started and cross-shared in user space or accessed remotely. 
+
+We're aiming to create a database so fast and efficient that it could be called the 
+"f**k database" — a no-nonsense, high-performance solution for extreme speed and scalability.
 
 ## QUIC (HTTP/3)
 
