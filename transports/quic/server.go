@@ -83,8 +83,22 @@ func (s *Server) acceptConnections() {
 		default:
 			conn, err := s.listener.Accept(context.Background())
 			if err != nil {
-				log.Printf("Error accepting QUIC connection: %v", err)
-				continue
+				// Check if the error is a QUIC ApplicationError with code 0x0 (connection closed normally)
+				var appErr *quic.ApplicationError
+				if errors.As(err, &appErr) && appErr.ErrorCode == 0x0 {
+					// Suppress logging for this specific error
+					return
+				}
+
+				// Check if it's the specific "use of closed network connection" error
+				if isClosedNetworkConnectionError(err) {
+					// Suppress logging for this specific error
+					return
+				}
+
+				// Log other errors
+				log.Printf("Error accepting QUIC stream: %v", err)
+				return // Exit if there's an error or the connection is closed
 			}
 
 			s.wg.Add(1)
@@ -128,8 +142,8 @@ func isClosedNetworkConnectionError(err error) bool {
 	if err == nil {
 		return false
 	}
-	// Check for the specific error message
-	return strings.Contains(err.Error(), "use of closed network connection")
+	return strings.Contains(err.Error(), "use of closed network connection") ||
+		strings.Contains(err.Error(), "server closed")
 }
 
 // handleStream handles incoming QUIC streams

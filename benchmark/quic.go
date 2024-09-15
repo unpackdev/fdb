@@ -16,6 +16,8 @@ import (
 type QuicSuite struct {
 	fdbInstance *fdb.FDB
 	quicServer  *transport_quic.Server
+	client      quic.Connection
+	stream      quic.Stream
 }
 
 // NewQuicSuite creates a new QuicSuite for benchmarking.
@@ -57,16 +59,22 @@ func (qs *QuicSuite) Start() error {
 	return nil
 }
 
-// Stop stops the QUIC server.
+// Stop stops the QUIC server and closes the client connection and stream.
 func (qs *QuicSuite) Stop() {
+	if qs.stream != nil {
+		qs.stream.Close()
+	}
+	if qs.client != nil {
+		qs.client.CloseWithError(0, "closing connection")
+	}
 	if qs.quicServer != nil {
 		qs.quicServer.Stop()
 		fmt.Println("QUIC server stopped successfully")
 	}
 }
 
-// Run sends a message from a client to the QUIC server.
-func (qs *QuicSuite) Run(ctx context.Context) error {
+// SetupClient sets up a QUIC client and stream. It should be called before running benchmarks.
+func (qs *QuicSuite) SetupClient(ctx context.Context) error {
 	serverAddr := qs.quicServer.Addr()
 
 	clientTLSConfig := &tls.Config{
@@ -74,50 +82,63 @@ func (qs *QuicSuite) Run(ctx context.Context) error {
 		NextProtos:         []string{"quic-example"},
 	}
 
+	// Connect to the server
 	client, err := quic.DialAddr(ctx, serverAddr, clientTLSConfig, nil)
 	if err != nil {
 		return fmt.Errorf("failed to dial QUIC server: %w", err)
 	}
-	defer client.CloseWithError(0, "closing connection")
+	qs.client = client
 
+	// Open a stream to send messages
 	stream, err := client.OpenStreamSync(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to open stream: %w", err)
 	}
-	defer stream.Close()
+	qs.stream = stream
 
+	return nil
+}
+
+// Run sends a single message through an open QUIC stream and waits for a response.
+func (qs *QuicSuite) Run(ctx context.Context) error {
+	// Check if stream is initialized
+	if qs.stream == nil {
+		return fmt.Errorf("stream is not initialized")
+	}
+
+	// Send the message
 	message := createWriteMessage()
 	encodedMessage, err := message.Encode()
 	if err != nil {
 		return fmt.Errorf("failed to encode message: %w", err)
 	}
 
-	_, err = stream.Write(encodedMessage)
+	_, err = qs.stream.Write(encodedMessage)
 	if err != nil {
 		return fmt.Errorf("failed to write message to server: %w", err)
 	}
 
+	// Simulate reading the response
 	buffer := make([]byte, 1024)
-	_, err = stream.Read(buffer)
+	_, err = qs.stream.Read(buffer)
 	if err != nil {
 		return fmt.Errorf("failed to read response: %w", err)
 	}
-	//fmt.Printf("Response from server: %s\n", string(buffer))
 
-	// Simulate read operation
+	// Perform read operation
 	readMessage := createReadMessage(message.Key)
 	encodedReadMessage, err := readMessage.Encode()
 	if err != nil {
 		return fmt.Errorf("failed to encode read message: %w", err)
 	}
 
-	_, err = stream.Write(encodedReadMessage)
+	_, err = qs.stream.Write(encodedReadMessage)
 	if err != nil {
-		return fmt.Errorf("failed to write read message to server: %w", err)
+		return fmt.Errorf("failed to write read message: %w", err)
 	}
 
 	// Read the data length
-	_, err = io.ReadFull(stream, buffer[:4])
+	_, err = io.ReadFull(qs.stream, buffer[:4])
 	if err != nil {
 		return fmt.Errorf("failed to read data length: %w", err)
 	}
@@ -125,11 +146,10 @@ func (qs *QuicSuite) Run(ctx context.Context) error {
 
 	// Read the actual data
 	readBuffer := make([]byte, valueLength)
-	_, err = io.ReadFull(stream, readBuffer)
+	_, err = io.ReadFull(qs.stream, readBuffer)
 	if err != nil {
 		return fmt.Errorf("failed to read value: %w", err)
 	}
-	//fmt.Printf("Data read from server: %s\n", string(readBuffer))
 
 	return nil
 }

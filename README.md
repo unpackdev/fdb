@@ -118,6 +118,30 @@ make build && ./build/fdb certs --cert-output=./data/certs/cert.pem --key-output
 make build && ./build/fdb benchmark --suite-type quic --clients=1 --messages=1000
 ```
 
+## Benchmarks
+
+### QUIC
+
+```
+make build && ./build/fdb benchmark --suite-type quic --clients=1 --messages=1000
+Starting benchmark...
+2024/09/15 20:55:18 QUIC Server started on 127.0.0.1:4433
+QUIC server started successfully
+
+--- Benchmark Report ---
+Total Clients: 0
+Total Messages: 1000
+Success Messages: 1000
+Failed Messages: 0
+Total Duration: 3.135008519s
+Average Latency: 3.130208ms
+Throughput: 318.98 messages/second
+Memory Used: 0 bytes
+QUIC server stopped successfully
+```
+
+^ This piece of shit is slow as you can see but at least came to the point where I can start doing optimizations.
+
 ## For Developers
 
 - Main entrypoint to the application can be found at [entrypoint](./entrypoint)

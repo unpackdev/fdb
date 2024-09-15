@@ -9,7 +9,7 @@ import (
 // SuiteManager manages multiple benchmarking suites for different transport types.
 type SuiteManager struct {
 	fdbInstance *fdb.FDB
-	Suites      map[SuiteType]TransportSuite // Expose Suites for easy access
+	Suites      map[SuiteType]TransportSuite
 }
 
 // NewSuiteManager creates a new SuiteManager capable of managing multiple transport-specific suites.
@@ -23,7 +23,6 @@ func NewSuiteManager(fdbInstance *fdb.FDB) *SuiteManager {
 	manager.RegisterSuite(QUICSuite, NewQuicSuite(fdbInstance))
 
 	// Future: Add other suites like UDS here
-	// manager.RegisterSuite(UDSSuite, NewUdsSuite(fdbInstance))
 
 	return manager
 }
@@ -51,7 +50,7 @@ func (sm *SuiteManager) Stop(suiteType SuiteType) {
 }
 
 // Run executes the benchmarking logic for the specified SuiteType.
-func (sm *SuiteManager) Run(ctx context.Context, suiteType SuiteType) error {
+func (sm *SuiteManager) Run(ctx context.Context, suiteType SuiteType, numClients int, numMessagesPerClient int) error {
 	suite, exists := sm.Suites[suiteType]
 	if !exists {
 		return fmt.Errorf("suite type %s not found", suiteType)

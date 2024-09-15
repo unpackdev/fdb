@@ -44,7 +44,7 @@ build: build-linux ## Build the binary for the current OS/Arch
 
 .PHONY: build-linux
 build-linux: ## Build the binary for Linux
-	GOOS=linux GOARCH=amd64 go build -o ./$(BIN_NAME) -ldflags "-X main.Version=$(VERSION) -X main.CommitHash=$(COMMIT_HASH)" ./entrypoint/main.go
+	@GOOS=linux GOARCH=amd64 go build -o ./$(BIN_NAME) -ldflags "-X main.Version=$(VERSION) -X main.CommitHash=$(COMMIT_HASH)" ./entrypoint/main.go
 
 .PHONY: build-darwin
 build-darwin: ## Build the binary for MacOS

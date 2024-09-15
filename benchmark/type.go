@@ -20,5 +20,6 @@ var ErrInvalidSuiteType = errors.New("invalid suite type")
 type TransportSuite interface {
 	Start() error
 	Stop()
+	SetupClient(ctx context.Context) error
 	Run(ctx context.Context) error
 }

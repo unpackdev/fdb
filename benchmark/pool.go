@@ -33,7 +33,7 @@ func (p *ClientPool) Start(ctx context.Context, suite TransportSuite) error {
 	startTime := time.Now()
 
 	for i := 0; i < p.totalClients; i++ {
-		go p.runClient(ctx, suite)
+		go p.runClient(ctx, i, suite)
 	}
 
 	p.poolWg.Wait()
@@ -43,8 +43,15 @@ func (p *ClientPool) Start(ctx context.Context, suite TransportSuite) error {
 }
 
 // runClient simulates a client sending multiple messages to the server.
-func (p *ClientPool) runClient(ctx context.Context, suite TransportSuite) {
+func (p *ClientPool) runClient(ctx context.Context, clientID int, suite TransportSuite) {
 	defer p.poolWg.Done()
+
+	// Setup client and stream
+	err := suite.SetupClient(ctx)
+	if err != nil {
+		fmt.Printf("Client %d setup failed: %v\n", clientID, err)
+		return
+	}
 
 	for i := 0; i < p.messagesPerClient; i++ {
 		messageStartTime := time.Now()
@@ -57,7 +64,7 @@ func (p *ClientPool) runClient(ctx context.Context, suite TransportSuite) {
 		p.latencyMutex.Unlock()
 
 		if err != nil {
-			fmt.Printf("Message %d failed: %v\n", i+1, err)
+			fmt.Printf("Client %d, Message %d failed: %v\n", clientID+1, i+1, err)
 			p.report.FailedMessages++
 		} else {
 			p.report.SuccessMessages++
