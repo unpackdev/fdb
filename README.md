@@ -11,7 +11,9 @@ as a troll and actual description as this task is quite hard to achieve.
 
 Though this will be hard to achieve without DPDK. Will not overkill the prototype with it for now...
 
-**NOTE: At this moment I am adding all possible faster ways including TCP to be able do proper benchmarking first**
+
+**NOTE: At this moment I am adding all possible faster ways, including TCP, to be able to do proper benchmarking first.
+In the future, I may drop transports that prove to be inefficient based on benchmark results.**
 
 ## QUIC (HTTP/3)
 
