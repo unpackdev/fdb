@@ -2,16 +2,17 @@ package fdb
 
 import (
 	"github.com/panjf2000/gnet"
+	"github.com/unpackdev/fdb/db"
 	"log"
 )
 
 // ReadHandler struct with MDBX database passed in
 type ReadHandler struct {
-	db Provider // MDBX database instance
+	db db.Provider // MDBX database instance
 }
 
 // NewReadHandler creates a new ReadHandler with an MDBX database
-func NewReadHandler(db Provider) *ReadHandler {
+func NewReadHandler(db db.Provider) *ReadHandler {
 	return &ReadHandler{
 		db: db,
 	}

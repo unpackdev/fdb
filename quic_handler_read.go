@@ -3,16 +3,17 @@ package fdb
 import (
 	"encoding/binary"
 	"github.com/quic-go/quic-go"
+	"github.com/unpackdev/fdb/db"
 	"log"
 )
 
 // QuicReadHandler struct with MDBX database passed in
 type QuicReadHandler struct {
-	db Provider // MDBX database instance
+	db db.Provider // MDBX database instance
 }
 
 // NewQuicReadHandler creates a new QuicReadHandler with an MDBX database
-func NewQuicReadHandler(db Provider) *QuicReadHandler {
+func NewQuicReadHandler(db db.Provider) *QuicReadHandler {
 	return &QuicReadHandler{
 		db: db,
 	}

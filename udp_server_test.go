@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"github.com/stretchr/testify/assert"
+	"github.com/unpackdev/fdb/db"
 	"log"
 	"math/big"
 	"net"
@@ -29,7 +30,7 @@ func getRandomPort() (int, error) {
 }
 
 // Start UDP server function with handlers for write and read
-func startUDPServer(ctx context.Context, db Provider) (*UdpServer, error) {
+func startUDPServer(ctx context.Context, db db.Provider) (*UdpServer, error) {
 	port, err := getRandomPort()
 	if err != nil {
 		return nil, err

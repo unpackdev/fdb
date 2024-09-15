@@ -1,4 +1,4 @@
-package fdb
+package db
 
 import (
 	"context"

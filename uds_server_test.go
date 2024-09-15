@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"github.com/stretchr/testify/assert"
+	"github.com/unpackdev/fdb/db"
 	"log"
 	"net"
 	"os"
@@ -12,7 +13,7 @@ import (
 )
 
 // Start UDS server function with handlers for write and read
-func startUDSServer(ctx context.Context, db Provider) (*UDSServer, error) {
+func startUDSServer(ctx context.Context, db db.Provider) (*UDSServer, error) {
 	socketPath := "/tmp/fdb_test.sock"
 	log.Printf("Starting UDS server on socket: %s", socketPath)
 

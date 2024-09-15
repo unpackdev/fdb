@@ -2,16 +2,17 @@ package fdb
 
 import (
 	"github.com/quic-go/quic-go"
+	"github.com/unpackdev/fdb/db"
 	"log"
 )
 
 // QuicWriteHandler struct with MDBX database passed in
 type QuicWriteHandler struct {
-	db Provider // Pass the MDBX database instance here
+	db db.Provider // Pass the MDBX database instance here
 }
 
 // NewQuicWriteHandler creates a new QuicWriteHandler with an MDBX database
-func NewQuicWriteHandler(db Provider) *QuicWriteHandler {
+func NewQuicWriteHandler(db db.Provider) *QuicWriteHandler {
 	return &QuicWriteHandler{
 		db: db,
 	}

@@ -106,6 +106,14 @@ sysctl -w net.core.wmem_max=7500000
 - P2P Sync... (Supervisors vs. Readers a.k.a. validators vs clients)
 - Could be grpc sync as well... Need to see complexity vs. benefits...
 
+## Commands
+
+### Certificates and co.
+
+```
+make build && ./build/fdb certs --cert-output=./data/certs/cert.pem --key-output=./data/certs/key.pem
+```
+
 ## For Developers
 
 - Main entrypoint to the application can be found at [entrypoint](./entrypoint)

@@ -6,38 +6,21 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/quic-go/quic-go"
+	"github.com/unpackdev/fdb/config"
 	"io"
 	"log"
 	"strings"
 	"sync"
 )
 
-// Handler function type for QUIC
+// QuicHandler function type for QUIC
 type QuicHandler func(sess quic.Connection, stream quic.Stream, message *Message)
-
-type QuicConfig struct {
-	Type    TransportType `yaml:"type" json:"type" mapstructure:"type"`
-	Enabled bool          `yaml:"enabled" json:"enabled" mapstructure:"enabled"`
-	IPv4    string        `yaml:"ipv4" json:"ipv4" mapstructure:"ipv4"`
-	Port    int           `yaml:"port" json:"port" mapstructure:"port"`
-}
-
-func (c QuicConfig) GetType() TransportType {
-	return c.Type
-}
-
-func (c QuicConfig) IsEnabled() bool {
-	return c.Enabled
-}
-
-func (c QuicConfig) IsIPv4() bool {
-	return c.IPv4 != ""
-}
 
 // QuicServer struct represents the QUIC server
 type QuicServer struct {
+	ctx             context.Context
 	handlerRegistry map[HandlerType]QuicHandler
-	addr            string
+	cnf             config.QuicTransport
 	tlsConfig       *tls.Config
 	stopChan        chan struct{}
 	started         chan struct{}
@@ -46,12 +29,16 @@ type QuicServer struct {
 }
 
 // NewQuicServer creates a new QuicServer instance
-func NewQuicServer(ip string, port int, tlsConfig *tls.Config) (*QuicServer, error) {
-	listenAddr := fmt.Sprintf("%s:%d", ip, port)
+func NewQuicServer(ctx context.Context, cnf config.QuicTransport) (*QuicServer, error) {
+	tlsConfig, tcErr := cnf.GetTLSConfig()
+	if tcErr != nil {
+		return nil, errors.Wrapf(tcErr, "could not get TLS config for quic transport")
+	}
 
 	server := &QuicServer{
+		ctx:             ctx,
 		handlerRegistry: make(map[HandlerType]QuicHandler),
-		addr:            listenAddr,
+		cnf:             cnf,
 		tlsConfig:       tlsConfig,
 		stopChan:        make(chan struct{}),
 		started:         make(chan struct{}),
@@ -62,13 +49,13 @@ func NewQuicServer(ip string, port int, tlsConfig *tls.Config) (*QuicServer, err
 
 // Addr returns the server address as a string.
 func (s *QuicServer) Addr() string {
-	return s.addr
+	return s.cnf.Addr()
 }
 
 // Start starts the QUIC server
 func (s *QuicServer) Start() error {
 	var err error
-	s.listener, err = quic.ListenAddr(s.addr, s.tlsConfig, nil)
+	s.listener, err = quic.ListenAddr(s.cnf.Addr(), s.tlsConfig, nil)
 	if err != nil {
 		return fmt.Errorf("failed to start QUIC server: %w", err)
 	}
@@ -76,11 +63,10 @@ func (s *QuicServer) Start() error {
 	// Signal that the server has started
 	close(s.started)
 
-	log.Printf("QUIC Server started on %s", s.addr)
+	log.Printf("QUIC Server started on %s", s.cnf.Addr())
 
 	s.wg.Add(1)
 	go s.acceptConnections()
-
 	return nil
 }
 

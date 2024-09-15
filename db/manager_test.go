@@ -1,7 +1,9 @@
-package fdb
+package db
 
 import (
 	"context"
+	"github.com/unpackdev/fdb/config"
+	"github.com/unpackdev/fdb/errors"
 	"os"
 	"testing"
 
@@ -24,7 +26,7 @@ func setupTestManager(t *testing.T) *Manager {
 	assert.NoError(t, err)
 
 	// Create options for the database
-	opts := MdbxNodes{
+	opts := config.MdbxNodes{
 		{Path: path, Name: "test"},
 	}
 
@@ -50,7 +52,7 @@ func setupBenchmarkTestManager(b *testing.B, dbPath string, dbName string) *Mana
 	assert.NoError(b, err, "Failed to create database directory")
 
 	// Create options for the database
-	opts := MdbxNodes{
+	opts := config.MdbxNodes{
 		{Path: dbPath, Name: dbName},
 	}
 
@@ -99,7 +101,7 @@ func TestManagerDbOperations(t *testing.T) {
 			// Test Get after Delete (should return ErrNotFound)
 			_, err = db.Get(tt.key)
 			assert.Error(t, err)
-			assert.Equal(t, ErrNotFound, err)
+			assert.Equal(t, errors.ErrNotFound, err)
 
 			// Test Exists after Delete (should return false)
 			exists, err = db.Exists(tt.key)

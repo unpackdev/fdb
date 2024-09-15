@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/pkg/errors"
 	"github.com/unpackdev/fdb/config"
+	"github.com/unpackdev/fdb/db"
 	"github.com/unpackdev/fdb/types"
 )
 
@@ -11,6 +12,7 @@ type FDB struct {
 	ctx              context.Context
 	config           config.Config
 	transportManager *TransportManager
+	dbManager        *db.Manager
 }
 
 func New(ctx context.Context, cnf config.Config) (*FDB, error) {
@@ -21,16 +23,22 @@ func New(ctx context.Context, cnf config.Config) (*FDB, error) {
 	// Create a new transport manager
 	transportManager := NewTransportManager()
 
+	dbM, dbmErr := db.NewManager(ctx, cnf.MdbxNodes)
+	if dbmErr != nil {
+		return nil, errors.Wrap(dbmErr, "failure to create database manager")
+	}
+
 	fdbInstance := &FDB{
 		ctx:              ctx,
 		config:           cnf,
 		transportManager: transportManager,
+		dbManager:        dbM,
 	}
 
 	for _, transport := range cnf.Transports {
 		switch t := transport.Config.(type) {
 		case config.QuicTransport:
-			quicServer, err := NewQuicServer(t.IPv4, t.Port, nil)
+			quicServer, err := NewQuicServer(ctx, t)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to create QUIC server")
 			}
@@ -52,6 +60,18 @@ func New(ctx context.Context, cnf config.Config) (*FDB, error) {
 	}
 
 	return fdbInstance, nil
+}
+
+func (fdb *FDB) GetConfig() config.Config {
+	return fdb.config
+}
+
+func (fdb *FDB) GetDbManager() *db.Manager {
+	return fdb.dbManager
+}
+
+func (fdb *FDB) GetTransportManager() *TransportManager {
+	return fdb.transportManager
 }
 
 // GetTransportByType allows retrieval of specific transport from the manager

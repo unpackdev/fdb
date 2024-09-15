@@ -1,4 +1,4 @@
-package fdb
+package db
 
 type Provider interface {
 	Set(key, value []byte) error

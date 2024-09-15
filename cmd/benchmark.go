@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/binary"
 	"fmt"
+	"github.com/pkg/errors"
 	"github.com/unpackdev/fdb"
 	"github.com/unpackdev/fdb/config"
 	"github.com/unpackdev/fdb/types"
@@ -20,18 +21,33 @@ import (
 // BenchmarkCommand returns a cli.Command that benchmarks the real client
 func BenchmarkCommand() *cli.Command {
 	return &cli.Command{
-		Name:  "test",
+		Name:  "benchmark",
 		Usage: "Benchmark the real client",
 		Action: func(c *cli.Context) error {
 			fmt.Println("Running client benchmark...")
 
 			// Configure QUIC transport
 			cnf := config.Config{
+				MdbxNodes: []config.MdbxNode{
+					{
+						Name: "benchmark",
+						Path: "/tmp/",
+					},
+				},
 				Transports: []config.Transport{
 					{
 						Type:    types.QUICTransportType,
 						Enabled: true,
-						Config:  config.QuicTransport{IPv4: "127.0.0.1", Port: 4433},
+						Config: config.QuicTransport{
+							Enabled: true,
+							IPv4:    "127.0.0.1",
+							Port:    4433,
+							TLS: config.TLS{
+								Key:    "./data/certs/key.pem",
+								Cert:   "./data/certs/cert.pem",
+								RootCA: "",
+							},
+						},
 					},
 				},
 			}
@@ -45,14 +61,27 @@ func BenchmarkCommand() *cli.Command {
 			// Get QUIC transport
 			quicTransport, err := fdbc.GetTransportByType(types.QUICTransportType)
 			if err != nil {
-				return fmt.Errorf("failed to retrieve QUIC transport: %w", err)
+				return errors.Wrap(err, "failed to get retrieve quic transport")
 			}
 
 			// Start the QUIC server
 			quicServer, ok := quicTransport.(*fdb.QuicServer)
 			if !ok {
-				return fmt.Errorf("failed to cast transport to QuicServer")
+				return errors.New("failed to cast transport to QuicServer")
 			}
+
+			// Gets benchmarks temporary database...
+			db, err := fdbc.GetDbManager().GetDb("benchmark")
+			if err != nil {
+				return err
+			}
+
+			wHandler := fdb.NewQuicWriteHandler(db)
+			quicServer.RegisterHandler(fdb.WriteHandlerType, wHandler.HandleMessage)
+
+			rHandler := fdb.NewQuicReadHandler(db)
+			quicServer.RegisterHandler(fdb.ReadHandlerType, rHandler.HandleMessage)
+
 			if err := quicServer.Start(); err != nil {
 				return fmt.Errorf("failed to start QUIC server: %w", err)
 			}

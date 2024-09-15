@@ -8,13 +8,14 @@ import (
 	"github.com/quic-go/quic-go"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/unpackdev/fdb/db"
 	"io"
 	"log"
 	"testing"
 	"time"
 )
 
-func startQuicServer(ctx context.Context, db Provider) (*QuicServer, error) {
+func startQuicServer(ctx context.Context, db db.Provider) (*QuicServer, error) {
 	port, err := getRandomPort()
 	if err != nil {
 		return nil, err

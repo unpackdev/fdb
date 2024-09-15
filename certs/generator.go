@@ -1,4 +1,4 @@
-package fdb
+package certs
 
 import (
 	"crypto/ecdsa"
@@ -28,6 +28,37 @@ func GenerateTLSConfig() *tls.Config {
 		},
 		NextProtos: []string{"quic-example"}, // Required for QUIC
 	}
+}
+
+// GenerateSelfSignedCert generates a self-signed certificate and private key.
+func GenerateSelfSignedCert() ([]byte, *ecdsa.PrivateKey, error) {
+	privKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Create a template for the certificate
+	template := x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			Organization: []string{"Example Organization"},
+		},
+		NotBefore: time.Now(),
+		NotAfter:  time.Now().Add(365 * 24 * time.Hour), // Valid for 1 year
+
+		KeyUsage:    x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+
+		BasicConstraintsValid: true,
+	}
+
+	// Create the self-signed certificate
+	certBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &privKey.PublicKey, privKey)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return certBytes, privKey, nil
 }
 
 // generateSelfSignedCert generates a self-signed certificate and private key.

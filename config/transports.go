@@ -1,6 +1,8 @@
 package config
 
-import "github.com/unpackdev/fdb/types"
+import (
+	"github.com/unpackdev/fdb/types"
+)
 
 type TransportConfig interface {
 	GetTransportType() types.TransportType
@@ -12,16 +14,11 @@ type Transport struct {
 	Config  TransportConfig
 }
 
-// QuicTransport implements TransportConfig
-type QuicTransport struct {
-	Type    types.TransportType `yaml:"type" json:"type" mapstructure:"type"`
-	Enabled bool                `yaml:"enabled" json:"enabled" mapstructure:"enabled"`
-	IPv4    string              `yaml:"ipv4" json:"ipv4" mapstructure:"ipv4"`
-	Port    int                 `yaml:"port" json:"port" mapstructure:"port"`
-}
-
-func (q QuicTransport) GetTransportType() types.TransportType {
-	return q.Type
+type TLS struct {
+	Insecure bool   `yaml:"insecure"`
+	Cert     string `json:"cert"`
+	Key      string `json:"key"`
+	RootCA   string `json:"rootCa"`
 }
 
 // UdsTransport implements TransportConfig

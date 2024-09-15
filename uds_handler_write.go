@@ -2,16 +2,17 @@ package fdb
 
 import (
 	"github.com/panjf2000/gnet"
+	"github.com/unpackdev/fdb/db"
 	"log"
 )
 
 // UDSWriteHandler struct with MDBX database passed in
 type UDSWriteHandler struct {
-	db Provider // MDBX database instance
+	db db.Provider // MDBX database instance
 }
 
 // NewUDSWriteHandler creates a new UDSWriteHandler with an MDBX database
-func NewUDSWriteHandler(db Provider) *UDSWriteHandler {
+func NewUDSWriteHandler(db db.Provider) *UDSWriteHandler {
 	return &UDSWriteHandler{
 		db: db,
 	}
