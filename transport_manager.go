@@ -2,24 +2,25 @@ package fdb
 
 import (
 	"errors"
+	"github.com/unpackdev/fdb/pkg/types"
 	"sync"
 )
 
 // TransportManager is responsible for managing different transport servers
 type TransportManager struct {
-	transports map[TransportType]interface{} // Holds references to different transports
+	transports map[types.TransportType]interface{} // Holds references to different transports
 	mu         sync.Mutex
 }
 
 // NewTransportManager creates a new TransportManager instance
 func NewTransportManager() *TransportManager {
 	return &TransportManager{
-		transports: make(map[TransportType]interface{}),
+		transports: make(map[types.TransportType]interface{}),
 	}
 }
 
 // RegisterTransport registers a transport by type
-func (tm *TransportManager) RegisterTransport(tType TransportType, transport interface{}) error {
+func (tm *TransportManager) RegisterTransport(tType types.TransportType, transport interface{}) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
@@ -34,7 +35,7 @@ func (tm *TransportManager) RegisterTransport(tType TransportType, transport int
 }
 
 // GetTransport retrieves a transport by type
-func (tm *TransportManager) GetTransport(tType TransportType) (interface{}, error) {
+func (tm *TransportManager) GetTransport(tType types.TransportType) (interface{}, error) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
@@ -47,7 +48,7 @@ func (tm *TransportManager) GetTransport(tType TransportType) (interface{}, erro
 }
 
 // DeregisterTransport removes a registered transport by type
-func (tm *TransportManager) DeregisterTransport(tType TransportType) error {
+func (tm *TransportManager) DeregisterTransport(tType types.TransportType) error {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
