@@ -1,5 +1,8 @@
 # (f)db
 
+**NOTE: At this moment I am adding all possible faster ways, including TCP, to be able to do proper benchmarking first.
+In the future, I may drop transports that prove to be inefficient based on benchmark results. At the same time I will slowly start to write wrappers around the packages for convenient usage incl. deployments.**
+
 This is currently a prototype, with the idea of building incredibly fast transport layers on 
 top of key-value (KV) databases. The goal is to allow one or multiple instances of these 
 databases to be started and cross-shared in user space or accessed remotely bypassing general locks
@@ -12,8 +15,6 @@ as a troll and actual description as this task is quite hard to achieve.
 Though this will be hard to achieve without DPDK. Will not overkill the prototype with it for now...
 
 
-**NOTE: At this moment I am adding all possible faster ways, including TCP, to be able to do proper benchmarking first.
-In the future, I may drop transports that prove to be inefficient based on benchmark results.**
 
 ## GNET
 
