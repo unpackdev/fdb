@@ -19,8 +19,9 @@ func NewSuiteManager(fdbInstance *fdb.FDB) *SuiteManager {
 		Suites:      make(map[SuiteType]TransportSuite),
 	}
 
-	// Register available suites (currently just QUIC)
+	// Register available suites
 	manager.RegisterSuite(QUICSuite, NewQuicSuite(fdbInstance))
+	manager.RegisterSuite(DummySuiteType, NewDummySuite(fdbInstance))
 
 	// Future: Add other suites like UDS here
 

@@ -9,8 +9,9 @@ import (
 type SuiteType string
 
 const (
-	QUICSuite SuiteType = "quic"
-	UDSSuite  SuiteType = "uds" // Example for future transport suites
+	QUICSuite      SuiteType = "quic"
+	UDSSuiteType   SuiteType = "uds" // Example for future transport suites
+	DummySuiteType SuiteType = "dummy"
 )
 
 // ErrInvalidSuiteType is returned when an unsupported SuiteType is provided.

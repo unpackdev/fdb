@@ -1,4 +1,4 @@
-package fdb
+package transport_dummy
 
 import (
 	"context"
@@ -12,8 +12,7 @@ import (
 
 type DummyHandler func(c gnet.Conn, frame []byte)
 
-// DummyServer struct represents the Unix Domain Socket (UDS) server using gnet
-type DummyServer struct {
+type Server struct {
 	*gnet.EventServer
 	ctx             context.Context
 	cnf             config.DummyTransport
@@ -23,9 +22,8 @@ type DummyServer struct {
 	started         chan struct{}
 }
 
-// NewUDSServer creates a new UDSServer instance
-func NewUDSServer(ctx context.Context, cnf config.DummyTransport) (*DummyServer, error) {
-	server := &DummyServer{
+func NewDummyServer(ctx context.Context, cnf config.DummyTransport) (*Server, error) {
+	server := &Server{
 		ctx:             ctx,
 		cnf:             cnf,
 		handlerRegistry: make(map[types.HandlerType]DummyHandler),
@@ -37,12 +35,12 @@ func NewUDSServer(ctx context.Context, cnf config.DummyTransport) (*DummyServer,
 }
 
 // Addr returns the UDS socket path as a string
-func (s *DummyServer) Addr() string {
+func (s *Server) Addr() string {
 	return s.cnf.Addr()
 }
 
 // Start starts the UDS server
-func (s *DummyServer) Start() error {
+func (s *Server) Start() error {
 	s.stopChan = make(chan struct{})
 	s.started = make(chan struct{}) // Initialize the started channel
 	listenAddr := "unix://" + s.addr
@@ -59,7 +57,7 @@ func (s *DummyServer) Start() error {
 }
 
 // Tick is called periodically by gnet
-func (s *DummyServer) Tick() (delay time.Duration, action gnet.Action) {
+func (s *Server) Tick() (delay time.Duration, action gnet.Action) {
 	select {
 	case <-s.stopChan:
 		return 0, gnet.Shutdown
@@ -69,23 +67,23 @@ func (s *DummyServer) Tick() (delay time.Duration, action gnet.Action) {
 }
 
 // Stop stops the UDS server
-func (s *DummyServer) Stop() {
+func (s *Server) Stop() {
 	close(s.stopChan)
 }
 
-func (s *DummyServer) WaitStarted() <-chan struct{} {
+func (s *Server) WaitStarted() <-chan struct{} {
 	return s.started
 }
 
 // OnInitComplete is called when the server starts
-func (s *DummyServer) OnInitComplete(server gnet.Server) (action gnet.Action) {
+func (s *Server) OnInitComplete(server gnet.Server) (action gnet.Action) {
 	log.Printf("Dummy Server is listening on %s", server.Addr.String())
 	close(s.started) // Signal that the server has started
 	return
 }
 
 // React handles incoming data
-func (s *DummyServer) React(frame []byte, c gnet.Conn) (out []byte, action gnet.Action) {
+func (s *Server) React(frame []byte, c gnet.Conn) (out []byte, action gnet.Action) {
 	if len(frame) < 1 {
 		return []byte("ERROR: Invalid action"), gnet.None
 	}
@@ -109,7 +107,7 @@ func (s *DummyServer) React(frame []byte, c gnet.Conn) (out []byte, action gnet.
 }
 
 // parseActionType parses the action type from the frame
-func (s *DummyServer) parseActionType(frame []byte) (types.HandlerType, error) {
+func (s *Server) parseActionType(frame []byte) (types.HandlerType, error) {
 	if len(frame) < 1 {
 		return 0, errors.New("invalid action: frame too short")
 	}
@@ -124,11 +122,11 @@ func (s *DummyServer) parseActionType(frame []byte) (types.HandlerType, error) {
 }
 
 // RegisterHandler registers a handler for a specific action
-func (s *DummyServer) RegisterHandler(actionType types.HandlerType, handler DummyHandler) {
+func (s *Server) RegisterHandler(actionType types.HandlerType, handler DummyHandler) {
 	s.handlerRegistry[actionType] = handler
 }
 
 // DeregisterHandler deregisters a handler for a specific action
-func (s *DummyServer) DeregisterHandler(actionType types.HandlerType) {
+func (s *Server) DeregisterHandler(actionType types.HandlerType) {
 	delete(s.handlerRegistry, actionType)
 }

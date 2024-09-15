@@ -6,6 +6,7 @@ import (
 	"github.com/unpackdev/fdb/config"
 	"github.com/unpackdev/fdb/db"
 	"github.com/unpackdev/fdb/transports"
+	transport_dummy "github.com/unpackdev/fdb/transports/dummy"
 	transport_quic "github.com/unpackdev/fdb/transports/quic"
 	"github.com/unpackdev/fdb/types"
 )
@@ -39,6 +40,14 @@ func New(ctx context.Context, cnf config.Config) (*FDB, error) {
 
 	for _, transport := range cnf.Transports {
 		switch t := transport.Config.(type) {
+		case config.DummyTransport:
+			udsServer, err := transport_dummy.NewDummyServer(ctx, t)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to create dummy server")
+			}
+			if err := transportManager.RegisterTransport(types.DummyTransportType, udsServer); err != nil {
+				return nil, errors.Wrap(err, "failed to register UDS transport")
+			}
 		case config.QuicTransport:
 			quicServer, err := transport_quic.NewServer(ctx, t)
 			if err != nil {

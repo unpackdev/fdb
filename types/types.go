@@ -6,6 +6,7 @@ type TransportType int
 
 const (
 	UDPTransportType TransportType = iota
+	DummyTransportType
 	QUICTransportType
 	UDSTransportType
 	TCPTransportType

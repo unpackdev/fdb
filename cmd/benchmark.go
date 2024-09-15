@@ -62,6 +62,20 @@ func BenchmarkCommand() *cli.Command {
 							},
 						},
 					},
+					{
+						Type:    types.DummyTransportType,
+						Enabled: true,
+						Config: config.DummyTransport{
+							Enabled: true,
+							IPv4:    "127.0.0.1",
+							Port:    4433,
+							TLS: config.TLS{
+								Key:    "./data/certs/key.pem",
+								Cert:   "./data/certs/cert.pem",
+								RootCA: "",
+							},
+						},
+					},
 				},
 			}
 
