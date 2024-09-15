@@ -14,6 +14,59 @@ as a troll and actual description as this task is quite hard to achieve.
 
 Though this will be hard to achieve without DPDK. Will not overkill the prototype with it for now...
 
+## Diagrams
+
+```mermaid
+graph TD;
+    A[Main Entry Point - main.go] --> B[CLI Manager - urfave/cli]
+    B --> C1[Test Command - Benchmark Client]
+    B --> C2[Other Commands - TBD]
+    
+    C1 -->|Executes Test Command| D1[Client Operations]
+    C1 -->|Collects Benchmark Data| D2[Memory Usage]
+    C1 -->|Collects Benchmark Data| D3[Execution Time]
+    
+    subgraph gRPC/QUIC/UDP/UDS Servers
+        E1[UDP Server] --> F1[Handler Registry - UDP]
+        E2[QUIC Server] --> F2[Handler Registry - QUIC]
+        E3[UDS Server] --> F3[Handler Registry - UDS]
+    end
+    
+    F1 --> |Handle Write| G1[WriteHandler]
+    F1 --> |Handle Read| G2[ReadHandler]
+    
+    F2 --> |Handle Write| G1
+    F2 --> |Handle Read| G2
+    
+    F3 --> |Handle Write| G1
+    F3 --> |Handle Read| G2
+    
+    subgraph MDBX Database
+        G1 --> H1[Set Key-Value Pair]
+        G2 --> H2[Get Key-Value Pair]
+    end
+    
+    subgraph Connection Handling
+        D1 -->|Client Operations| I[Connection Handler]
+        I -->|Gnet/QUIC| J1[Process Incoming Stream/Frame]
+        I -->|Gnet/QUIC| J2[React to Incoming Data]
+    end
+    
+    I --> E1
+    I --> E2
+    I --> E3
+```
+
+
+### Explanation of the Diagram:
+
+1. **Main Entry Point**: This is where the `main.go` resides. The CLI manager (`urfave/cli`) manages various commands.
+2. **Test Command**: This command benchmarks the real client. It includes operations such as client actions and collects metrics like memory usage and execution time.
+3. **gRPC/QUIC/UDP/UDS Servers**: These are different servers supported by `fdb`, each with its own handler registry for processing requests.
+4. **Handlers**: Each server has a `WriteHandler` and `ReadHandler` that interact with the `MDBX` database to set and get key-value pairs.
+5. **Connection Handling**: This is where the incoming connections are processed. It uses `gnet` and `QUIC` to handle streams or frames and react to incoming data.
+
+This architecture provides a high-level overview of the `fdb` system. You can copy this into your README, and GitHub will render the mermaid diagram automatically.
 
 
 ## GNET
@@ -30,6 +83,9 @@ https://github.com/panjf2000/gnet
 
 https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes
 
+
+
+
 ```
 sysctl -w net.core.rmem_max=7500000
 sysctl -w net.core.wmem_max=7500000
@@ -39,6 +95,10 @@ sysctl -w net.core.wmem_max=7500000
 
 - P2P Sync... (Supervisors vs. Readers a.k.a. validators vs clients)
 - Could be grpc sync as well... Need to see complexity vs. benefits...
+
+## For Developers
+
+- Main entrypoint to the application can be found at [entrypoint](./entrypoint)
 
 ## Unit Tests
 
