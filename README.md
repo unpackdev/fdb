@@ -50,5 +50,13 @@ ok  	github.com/unpackdev/fdb	0.132s
 ## Benchmarks
 
 ```
-
+go test -run=^$ -bench=BenchmarkUDPServerWrite -v
+goos: linux
+goarch: amd64
+pkg: github.com/unpackdev/fdb
+cpu: AMD Ryzen Threadripper 3960X 24-Core Processor 
+BenchmarkUDPServerWrite
+BenchmarkUDPServerWrite-48    	  279058	      4473 ns/op
+PASS
+ok  	github.com/unpackdev/fdb	2.879s
 ```
