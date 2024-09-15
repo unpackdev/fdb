@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/unpackdev/fdb"
 	"github.com/urfave/cli/v2"
 	"log"
 	"runtime"
@@ -16,6 +17,15 @@ func BenchmarkCommand() *cli.Command {
 		Action: func(c *cli.Context) error {
 			// Simulate benchmarking logic here
 			fmt.Println("Running client benchmark...")
+
+			cnf := fdb.Config{}
+
+			fdbc, fdbcErr := fdb.New(c.Context, cnf)
+			if fdbcErr != nil {
+				return fdbcErr
+			}
+
+			_ = fdbc
 
 			// Example: Perform a benchmark by running some mock client operations
 			benchmarkClient()

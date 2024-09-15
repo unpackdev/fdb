@@ -7,11 +7,32 @@ type MdbxNode struct {
 
 type MdbxNodes []MdbxNode
 
-type Config struct {
-	MdbxNodes MdbxNodes `yaml:"nodes"`
+type Transport struct {
+	Type    TransportType `yaml:"type" json:"type" mapstructure:"type"`
+	Enabled bool          `yaml:"enabled" json:"enabled" mapstructure:"enabled"`
+	IPv4    string        `yaml:"ipv4" json:"ipv4" mapstructure:"ipv4"`
+	Port    int           `yaml:"port" json:"port" mapstructure:"port"`
 }
 
-func (c *Config) GetMdbxNodeByName(name string) *MdbxNode {
+type Config struct {
+	Transports []Transport `yaml:"transports"`
+	MdbxNodes  MdbxNodes   `yaml:"nodes"`
+}
+
+func (c Config) Validate() error {
+	return nil
+}
+
+func (c Config) GetTransportByType(transportType TransportType) *Transport {
+	for _, t := range c.Transports {
+		if t.Type == transportType {
+			return &t
+		}
+	}
+	return nil
+}
+
+func (c Config) GetMdbxNodeByName(name string) *MdbxNode {
 	for _, node := range c.MdbxNodes {
 		if node.Name == name {
 			return &node

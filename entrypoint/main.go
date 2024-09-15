@@ -13,6 +13,7 @@ func main() {
 		Usage: "Lorem ipsum dolor sit amet...",
 		Commands: []*cli.Command{
 			// Load commands from the cmd package
+			cmd.ServerCommand(),
 			cmd.BenchmarkCommand(), // Load the 'test' command
 		},
 	}
