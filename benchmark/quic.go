@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/quic-go/quic-go"
 	"github.com/unpackdev/fdb"
+	transport_quic "github.com/unpackdev/fdb/transports/quic"
 	"github.com/unpackdev/fdb/types"
 	"io"
 )
@@ -14,7 +15,7 @@ import (
 // QuicSuite represents the QUIC-specific benchmark suite.
 type QuicSuite struct {
 	fdbInstance *fdb.FDB
-	quicServer  *fdb.QuicServer
+	quicServer  *transport_quic.Server
 }
 
 // NewQuicSuite creates a new QuicSuite for benchmarking.
@@ -31,7 +32,7 @@ func (qs *QuicSuite) Start() error {
 		return fmt.Errorf("failed to retrieve QUIC transport: %w", err)
 	}
 
-	quicServer, ok := quicTransport.(*fdb.QuicServer)
+	quicServer, ok := quicTransport.(*transport_quic.Server)
 	if !ok {
 		return fmt.Errorf("failed to cast transport to QuicServer")
 	}
@@ -41,11 +42,11 @@ func (qs *QuicSuite) Start() error {
 		return fmt.Errorf("failed to retrieve benchmark database: %w", err)
 	}
 
-	wHandler := fdb.NewQuicWriteHandler(db)
-	quicServer.RegisterHandler(fdb.WriteHandlerType, wHandler.HandleMessage)
+	wHandler := transport_quic.NewQuicWriteHandler(db)
+	quicServer.RegisterHandler(types.WriteHandlerType, wHandler.HandleMessage)
 
-	rHandler := fdb.NewQuicReadHandler(db)
-	quicServer.RegisterHandler(fdb.ReadHandlerType, rHandler.HandleMessage)
+	rHandler := transport_quic.NewQuicReadHandler(db)
+	quicServer.RegisterHandler(types.ReadHandlerType, rHandler.HandleMessage)
 
 	if err := quicServer.Start(); err != nil {
 		return fmt.Errorf("failed to start QUIC server: %w", err)

@@ -1,8 +1,9 @@
-package fdb
+package transport_quic
 
 import (
 	"github.com/quic-go/quic-go"
 	"github.com/unpackdev/fdb/db"
+	"github.com/unpackdev/fdb/messages"
 	"log"
 )
 
@@ -19,7 +20,7 @@ func NewQuicWriteHandler(db db.Provider) *QuicWriteHandler {
 }
 
 // HandleMessage processes the incoming message using the QuicWriteHandler
-func (wh *QuicWriteHandler) HandleMessage(conn quic.Connection, stream quic.Stream, message *Message) {
+func (wh *QuicWriteHandler) HandleMessage(conn quic.Connection, stream quic.Stream, message *messages.Message) {
 	// Log the message for debugging purposes
 	//log.Printf("Processing write request: Handler=%d, Key=%x, Data=%s", message.Handler, message.Key, string(message.Data))
 

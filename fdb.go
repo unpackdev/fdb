@@ -5,6 +5,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/unpackdev/fdb/config"
 	"github.com/unpackdev/fdb/db"
+	transport_quic "github.com/unpackdev/fdb/transports/quic"
 	"github.com/unpackdev/fdb/types"
 )
 
@@ -38,7 +39,7 @@ func New(ctx context.Context, cnf config.Config) (*FDB, error) {
 	for _, transport := range cnf.Transports {
 		switch t := transport.Config.(type) {
 		case config.QuicTransport:
-			quicServer, err := NewQuicServer(ctx, t)
+			quicServer, err := transport_quic.NewServer(ctx, t)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to create QUIC server")
 			}

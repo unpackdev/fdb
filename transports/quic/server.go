@@ -1,4 +1,4 @@
-package fdb
+package transport_quic
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/quic-go/quic-go"
 	"github.com/unpackdev/fdb/config"
+	"github.com/unpackdev/fdb/messages"
+	"github.com/unpackdev/fdb/types"
 	"io"
 	"log"
 	"strings"
@@ -14,12 +16,12 @@ import (
 )
 
 // QuicHandler function type for QUIC
-type QuicHandler func(sess quic.Connection, stream quic.Stream, message *Message)
+type QuicHandler func(sess quic.Connection, stream quic.Stream, message *messages.Message)
 
-// QuicServer struct represents the QUIC server
-type QuicServer struct {
+// Server struct represents the QUIC server
+type Server struct {
 	ctx             context.Context
-	handlerRegistry map[HandlerType]QuicHandler
+	handlerRegistry map[types.HandlerType]QuicHandler
 	cnf             config.QuicTransport
 	tlsConfig       *tls.Config
 	stopChan        chan struct{}
@@ -28,16 +30,16 @@ type QuicServer struct {
 	listener        *quic.Listener
 }
 
-// NewQuicServer creates a new QuicServer instance
-func NewQuicServer(ctx context.Context, cnf config.QuicTransport) (*QuicServer, error) {
+// NewServer creates a new QuicServer instance
+func NewServer(ctx context.Context, cnf config.QuicTransport) (*Server, error) {
 	tlsConfig, tcErr := cnf.GetTLSConfig()
 	if tcErr != nil {
 		return nil, errors.Wrapf(tcErr, "could not get TLS config for quic transport")
 	}
 
-	server := &QuicServer{
+	server := &Server{
 		ctx:             ctx,
-		handlerRegistry: make(map[HandlerType]QuicHandler),
+		handlerRegistry: make(map[types.HandlerType]QuicHandler),
 		cnf:             cnf,
 		tlsConfig:       tlsConfig,
 		stopChan:        make(chan struct{}),
@@ -48,12 +50,12 @@ func NewQuicServer(ctx context.Context, cnf config.QuicTransport) (*QuicServer, 
 }
 
 // Addr returns the server address as a string.
-func (s *QuicServer) Addr() string {
+func (s *Server) Addr() string {
 	return s.cnf.Addr()
 }
 
 // Start starts the QUIC server
-func (s *QuicServer) Start() error {
+func (s *Server) Start() error {
 	var err error
 	s.listener, err = quic.ListenAddr(s.cnf.Addr(), s.tlsConfig, nil)
 	if err != nil {
@@ -71,7 +73,7 @@ func (s *QuicServer) Start() error {
 }
 
 // acceptConnections continuously accepts new QUIC connections
-func (s *QuicServer) acceptConnections() {
+func (s *Server) acceptConnections() {
 	defer s.wg.Done()
 
 	for {
@@ -91,7 +93,7 @@ func (s *QuicServer) acceptConnections() {
 	}
 }
 
-func (s *QuicServer) handleConnection(conn quic.Connection) {
+func (s *Server) handleConnection(conn quic.Connection) {
 	defer s.wg.Done()
 
 	// Continuously accept and handle new streams on the connection
@@ -131,7 +133,7 @@ func isClosedNetworkConnectionError(err error) bool {
 }
 
 // handleStream handles incoming QUIC streams
-func (s *QuicServer) handleStream(conn quic.Connection, stream quic.Stream) {
+func (s *Server) handleStream(conn quic.Connection, stream quic.Stream) {
 	defer s.wg.Done()
 
 	// Continuously read from the stream until it's closed
@@ -164,7 +166,7 @@ func (s *QuicServer) handleStream(conn quic.Connection, stream quic.Stream) {
 		}
 
 		// Step 2: Decode the message from the buffer
-		message, err := Decode(buffer[:n])
+		message, err := messages.Decode(buffer[:n])
 		if err != nil {
 			log.Printf("Error decoding message: %v", err)
 			return
@@ -186,24 +188,24 @@ func (s *QuicServer) handleStream(conn quic.Connection, stream quic.Stream) {
 }
 
 // Stop stops the QUIC server
-func (s *QuicServer) Stop() {
+func (s *Server) Stop() {
 	close(s.stopChan)
 	s.listener.Close()
 	s.wg.Wait()
 }
 
 // WaitStarted returns a channel that is closed when the server has started
-func (s *QuicServer) WaitStarted() <-chan struct{} {
+func (s *Server) WaitStarted() <-chan struct{} {
 	return s.started
 }
 
 // parseActionType parses the action type from the first byte of the stream
-func (s *QuicServer) parseActionType(frame []byte) (HandlerType, error) {
+func (s *Server) parseActionType(frame []byte) (types.HandlerType, error) {
 	if len(frame) < 1 {
 		return 0, fmt.Errorf("invalid action: frame too short")
 	}
 
-	var actionType HandlerType
+	var actionType types.HandlerType
 	err := actionType.FromByte(frame[0])
 	if err != nil {
 		return 0, err
@@ -213,11 +215,11 @@ func (s *QuicServer) parseActionType(frame []byte) (HandlerType, error) {
 }
 
 // RegisterHandler registers a handler for a specific action
-func (s *QuicServer) RegisterHandler(actionType HandlerType, handler QuicHandler) {
+func (s *Server) RegisterHandler(actionType types.HandlerType, handler QuicHandler) {
 	s.handlerRegistry[actionType] = handler
 }
 
 // DeregisterHandler deregisters a handler for a specific action
-func (s *QuicServer) DeregisterHandler(actionType HandlerType) {
+func (s *Server) DeregisterHandler(actionType types.HandlerType) {
 	delete(s.handlerRegistry, actionType)
 }

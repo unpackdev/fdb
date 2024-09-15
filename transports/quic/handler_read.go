@@ -1,9 +1,10 @@
-package fdb
+package transport_quic
 
 import (
 	"encoding/binary"
 	"github.com/quic-go/quic-go"
 	"github.com/unpackdev/fdb/db"
+	"github.com/unpackdev/fdb/messages"
 	"log"
 )
 
@@ -20,7 +21,7 @@ func NewQuicReadHandler(db db.Provider) *QuicReadHandler {
 }
 
 // HandleMessage processes the incoming message using the QuicReadHandler
-func (rh *QuicReadHandler) HandleMessage(conn quic.Connection, stream quic.Stream, message *Message) {
+func (rh *QuicReadHandler) HandleMessage(conn quic.Connection, stream quic.Stream, message *messages.Message) {
 	//log.Printf("Processing read request: Handler=%d, Key=%x", message.Handler, message.Key)
 
 	// Query the database using the key from the Message struct
