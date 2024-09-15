@@ -2,7 +2,7 @@ package fdb
 
 import (
 	"errors"
-	"github.com/unpackdev/fdb/pkg/types"
+	"github.com/unpackdev/fdb/types"
 	"sync"
 )
 

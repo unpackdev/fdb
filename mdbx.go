@@ -4,7 +4,7 @@ import (
 	"context"
 	"github.com/erigontech/mdbx-go/mdbx"
 	"github.com/pkg/errors"
-	"github.com/unpackdev/fdb/pkg/config"
+	"github.com/unpackdev/fdb/config"
 	"os"
 )
 

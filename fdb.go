@@ -3,8 +3,8 @@ package fdb
 import (
 	"context"
 	"github.com/pkg/errors"
-	"github.com/unpackdev/fdb/pkg/config"
-	"github.com/unpackdev/fdb/pkg/types"
+	"github.com/unpackdev/fdb/config"
+	"github.com/unpackdev/fdb/types"
 )
 
 type FDB struct {

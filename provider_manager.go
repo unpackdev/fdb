@@ -3,7 +3,7 @@ package fdb
 import (
 	"context"
 	"fmt"
-	"github.com/unpackdev/fdb/pkg/config"
+	"github.com/unpackdev/fdb/config"
 )
 
 type Manager struct {

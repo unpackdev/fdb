@@ -1,6 +1,6 @@
 package config
 
-import "github.com/unpackdev/fdb/pkg/types"
+import "github.com/unpackdev/fdb/types"
 
 type Config struct {
 	Transports []Transport `yaml:"transports"`
