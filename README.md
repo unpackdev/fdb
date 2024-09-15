@@ -18,9 +18,7 @@ top of key-value (KV) databases. The goal is to allow one or multiple instances 
 databases to be started and cross-shared in user space or accessed remotely bypassing general locks
 that are enforced in KV databases or some of the OLAP databases such as DuckDB.
 
-We're aiming to create a database wrappers so fast and efficient that it could be called the 
-"f**k database" — a no-nonsense, high-performance solution for extreme speed and scalability suitable for HFS (High Frequency Trading) or basically
-as a troll and actual description as this task is quite hard to achieve.
+This project is going to be either f**k databases or fast database... There is no third solution...
 
 Though this will be hard to achieve without DPDK. Will not overkill the prototype with it for now...
 
