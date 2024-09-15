@@ -112,6 +112,12 @@ sysctl -w net.core.wmem_max=7500000
 make build && ./build/fdb certs --cert-output=./data/certs/cert.pem --key-output=./data/certs/key.pem
 ```
 
+### Benchmark
+
+```
+make build && ./build/fdb benchmark --suite-type quic --clients=1 --messages=1000
+```
+
 ## For Developers
 
 - Main entrypoint to the application can be found at [entrypoint](./entrypoint)
