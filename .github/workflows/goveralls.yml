@@ -1,0 +1,59 @@
+name: Coverage
+on: [push]
+jobs:
+
+  test:
+    runs-on: ubuntu-latest
+    env:
+      SOLC_SWITCH_GITHUB_TOKEN: ${{ secrets.SOLC_SWITCH_GITHUB_TOKEN }}
+      FULL_NODE_TEST_URL: ${{ secrets.FULL_NODE_TEST_URL }}
+      ARCHIVE_NODE_TEST_URL: ${{ secrets.ARCHIVE_NODE_TEST_URL }}
+      ETHERSCAN_API_KEYS: ${{ secrets.ETHERSCAN_API_KEYS }}
+    strategy:
+      fail-fast: false
+      matrix:
+        go:
+          - '1.22'
+
+    steps:
+      - uses: actions/setup-go@v3
+        with:
+          go-version: ${{ matrix.go }}
+      - uses: actions/checkout@v3
+      - run: make submodules
+
+      # Install solc-select
+      - name: Install solc-select
+        run: |
+          python3 -m venv solgoenv
+          source solgoenv/bin/activate
+          pip3 install solc-select
+          pip3 install slither-analyzer
+
+      # Install and set a specific version of solc
+      - name: Setup solc
+        run: |
+          source solgoenv/bin/activate
+          solc-select install 0.8.19
+          solc-select use 0.8.19
+
+      - name: Run Coverage Profile
+        run: |
+          source solgoenv/bin/activate
+          go test -v -coverprofile=profile.cov ./...
+
+      - name: Send coverage
+        uses: shogo82148/actions-goveralls@v1.7.0
+        with:
+          path-to-profile: profile.cov
+          flag-name: Go-${{ matrix.go }}
+          parallel: true
+
+  # notifies that all test jobs are finished.
+  finish:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: shogo82148/actions-goveralls@v1.7.0
+        with:
+          parallel-finished: true

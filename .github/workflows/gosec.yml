@@ -1,0 +1,33 @@
+name: Security
+on: [push]
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    env:
+      SOLC_SWITCH_GITHUB_TOKEN: ${{ secrets.SOLC_SWITCH_GITHUB_TOKEN }}
+      FULL_NODE_TEST_URL: ${{ secrets.FULL_NODE_TEST_URL }}
+      ARCHIVE_NODE_TEST_URL: ${{ secrets.ARCHIVE_NODE_TEST_URL }}
+      ETHERSCAN_API_KEYS: ${{ secrets.ETHERSCAN_API_KEYS }}
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v3
+
+      # Install solc-select
+      - name: Install solc-select
+        run: |
+          python3 -m venv solgoenv
+          source solgoenv/bin/activate
+          pip3 install solc-select
+          pip3 install slither-analyzer
+
+      # Install and set a specific version of solc
+      - name: Setup solc
+        run: |
+          source solgoenv/bin/activate
+          solc-select install 0.8.19
+          solc-select use 0.8.19
+
+      - name: Run Gosec Security Scanner
+        uses: securego/gosec@master
+        with:
+          args: --exclude=G302,G304,G306,G107 ./...

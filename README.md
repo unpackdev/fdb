@@ -1,3 +1,13 @@
+[![Tests Status](https://github.com/unpackdev/fdb/actions/workflows/test.yml/badge.svg)](https://github.com/unpackdev/fdb/actions/workflows/test.yml)
+[![Build Status](https://github.com/unpackdev/fdb/actions/workflows/build.yml/badge.svg)](https://github.com/unpackdev/fdb/actions/workflows/build.yml)
+[![Security Status](https://github.com/unpackdev/fdb/actions/workflows/gosec.yml/badge.svg)](https://github.com/unpackdev/fdb/actions/workflows/gosec.yml)
+[![Coverage Status](https://coveralls.io/repos/github/unpackdev/fdb/badge.svg?branch=main)](https://coveralls.io/github/unpackdev/fdb?branch=main)
+[![Go Report Card](https://goreportcard.com/badge/github.com/unpackdev/fdb)](https://goreportcard.com/report/github.com/unpackdev/fdb)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![PkgGoDev](https://pkg.go.dev/badge/github.com/unpackdev/fdb)](https://pkg.go.dev/github.com/unpackdev/fdb)
+[![Discord](https://img.shields.io/discord/1109929011896909875.svg)](https://discord.gg/PdHVbuTQRX)
+
+
 # (f)db
 
 **NOTE: At this moment I am adding all possible faster ways, including TCP, to be able to do proper benchmarking first.
