@@ -5,7 +5,8 @@ top of key-value (KV) databases. The goal is to allow one or multiple instances 
 databases to be started and cross-shared in user space or accessed remotely. 
 
 We're aiming to create a database so fast and efficient that it could be called the 
-"f**k database" — a no-nonsense, high-performance solution for extreme speed and scalability.
+"f**k database" — a no-nonsense, high-performance solution for extreme speed and scalability or basically
+as a troll and actual description as this task is quite hard to achieve. 
 
 ## QUIC (HTTP/3)
 
