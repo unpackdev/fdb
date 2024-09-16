@@ -6,7 +6,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/unpackdev/fdb/config"
 	"github.com/unpackdev/fdb/types"
-	"log"
+	"go.uber.org/zap"
 	"time"
 )
 
@@ -42,17 +42,44 @@ func (s *Server) Addr() string {
 func (s *Server) Start() error {
 	s.stopChan = make(chan struct{})
 	s.started = make(chan struct{}, 1) // Initialize the started channel
-	listenAddr := "udp://" + s.cnf.Addr()
-	log.Printf("UDS Server started on %s", listenAddr)
 
-	return gnet.Serve(
-		s, listenAddr,
-		gnet.WithMulticore(true),
-		gnet.WithReusePort(true),
-		gnet.WithSocketRecvBuffer(1024*64),
-		gnet.WithLockOSThread(true),
-		gnet.WithTicker(true),
-	)
+	listenAddr := "udp://" + s.cnf.Addr()
+	defer zap.L().Info("Dummy transport started", zap.String("addr", listenAddr))
+
+	// Create an error channel to capture errors from the goroutine
+	errChan := make(chan error, 1)
+
+	// Start the server asynchronously
+	go func() {
+		err := gnet.Serve(
+			s, listenAddr,
+			gnet.WithMulticore(true),
+			gnet.WithReusePort(true),
+			gnet.WithSocketRecvBuffer(1024*64),
+			gnet.WithLockOSThread(true),
+			gnet.WithTicker(true),
+		)
+		if err != nil {
+			errChan <- err // Send error to the channel
+			return
+		}
+		close(errChan) // No error, so close the channel
+	}()
+
+	// Wait until OnInitComplete sends a signal or an error occurs
+	select {
+	case <-s.started:
+		close(s.started)
+		// Server started successfully
+		return nil
+	case err := <-errChan:
+		if err != nil {
+			return errors.Wrap(err, "failed to start dummy server")
+		}
+		return nil
+	case <-time.After(2 * time.Second):
+		return errors.New("dummy server did not start in time")
+	}
 }
 
 // Tick is called periodically by gnet
@@ -72,13 +99,15 @@ func (s *Server) Stop() error {
 }
 
 func (s *Server) WaitStarted() <-chan struct{} {
-	defer close(s.started)
 	return s.started
 }
 
 // OnInitComplete is called when the server starts
 func (s *Server) OnInitComplete(server gnet.Server) (action gnet.Action) {
-	log.Printf("Dummy Server is listening on %s", server.Addr.String())
+	zap.L().Info(
+		"Dummy transport initialization completed (listening)",
+		zap.String("addr", server.Addr.String()),
+	)
 	s.started <- struct{}{} // Signal that the server has started
 	return
 }

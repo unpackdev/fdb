@@ -7,6 +7,7 @@ import (
 	"github.com/unpackdev/fdb"
 	transport_dummy "github.com/unpackdev/fdb/transports/dummy"
 	"github.com/unpackdev/fdb/types"
+	"go.uber.org/zap"
 	"net"
 )
 
@@ -45,16 +46,15 @@ func (qs *DummySuite) Start(ctx context.Context) error {
 	rHandler := transport_dummy.NewDummyReadHandler(db)
 	dummyServer.RegisterHandler(types.ReadHandlerType, rHandler.HandleMessage)
 
-	go (func() {
-		if err := dummyServer.Start(); err != nil {
-			//return fmt.Errorf("failed to start Dummy server: %w", err)
-		}
-	})()
-
-	<-dummyServer.WaitStarted()
+	if sErr := dummyServer.Start(); sErr != nil {
+		zap.L().Error(
+			"failed to start dummy transport",
+			zap.Error(sErr),
+		)
+	}
 
 	qs.server = dummyServer
-	fmt.Println("Dummy server started successfully")
+	zap.L().Info("Dummy transport is ready to accept the traffic", zap.String("addr", dummyServer.Addr()))
 	return nil
 }
 
@@ -92,28 +92,6 @@ func (qs *DummySuite) SetupClient(ctx context.Context) error {
 	}
 
 	qs.client = client
-
-	/*	serverAddr := qs.server.Addr()
-
-		clientTLSConfig := &tls.Config{
-			InsecureSkipVerify: true,
-			NextProtos:         []string{"quic-example"},
-		}
-
-		// Connect to the server
-		client, err := quic.DialAddr(ctx, serverAddr, clientTLSConfig, nil)
-		if err != nil {
-			return fmt.Errorf("failed to dial QUIC server: %w", err)
-		}
-		qs.client = client
-
-		// Open a stream to send messages
-		stream, err := client.OpenStreamSync(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to open stream: %w", err)
-		}
-		qs.stream = stream*/
-
 	return nil
 }
 
@@ -124,53 +102,16 @@ func (qs *DummySuite) Run(ctx context.Context) error {
 		return fmt.Errorf("client is not initialized")
 	}
 
-	/*	// Send the write message
-		message := createWriteMessage()
-		encodedMessage, err := message.Encode()
-		if err != nil {
-			return fmt.Errorf("failed to encode message: %w", err)
-		}
+	message := createWriteMessage()
+	encodedMessage, err := message.Encode()
+	if err != nil {
+		return fmt.Errorf("failed to encode message: %w", err)
+	}
 
-		_, err = qs.stream.Write(encodedMessage)
-		if err != nil {
-			return fmt.Errorf("failed to write message to server: %w", err)
-		}
+	_, wErr := qs.client.Write(encodedMessage)
+	if wErr != nil {
+		return errors.Wrap(wErr, "failed to write message dummy message")
+	}
 
-		// Reuse buffer from pool
-		buffer := bufferPool.Get().([]byte)
-		defer bufferPool.Put(buffer) // Return buffer to pool after use
-
-		// Read the response
-		_, err = qs.stream.Read(buffer)
-		if err != nil {
-			return fmt.Errorf("failed to read response: %w", err)
-		}
-
-		// Perform read operation
-		readMessage := createReadMessage(message.Key)
-		encodedReadMessage, err := readMessage.Encode()
-		if err != nil {
-			return fmt.Errorf("failed to encode read message: %w", err)
-		}
-
-		_, err = qs.stream.Write(encodedReadMessage)
-		if err != nil {
-			return fmt.Errorf("failed to write read message: %w", err)
-		}
-
-		// Read the data length
-		_, err = io.ReadFull(qs.stream, buffer[:4])
-		if err != nil {
-			return fmt.Errorf("failed to read data length: %w", err)
-		}
-		valueLength := binary.BigEndian.Uint32(buffer[:4])
-
-		// Read the actual data
-		readBuffer := make([]byte, valueLength)
-		_, err = io.ReadFull(qs.stream, readBuffer)
-		if err != nil {
-			return fmt.Errorf("failed to read value: %w", err)
-		}
-	*/
 	return nil
 }
