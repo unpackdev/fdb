@@ -126,22 +126,24 @@ There is a dummy transport, starts the (gnet) UDP and does pretty much nothing. 
 use that one as a baseline for any other benchmark.
 
 ```
-make build && ./build/fdb benchmark --suite-type dummy
+make build && ./build/fdb benchmark --suite dummy --clients 50 --messages 1000000 --type write --timeout 120
 
 --- Benchmark Report ---
-Total Clients: 10
-Total Messages: 1000
-Success Messages: 1000
+Total Clients: 50
+Messages per Client: 1000000
+Total Messages: 50000000
+Success Messages: 50000000
 Failed Messages: 0
-Total Duration: 199.805µs
-Average Latency: 28ns
-Throughput: 6,702,126 m/s
-Memory Used: 0 bytes
+Total Duration: 13.604984597s
+Average Latency: 10.925µs
+P50 Latency: 5.87µs
+P90 Latency: 7.4µs
+P99 Latency: 14.56µs
+Throughput: 3,675,123 messages/second
+Memory Used: 6.05 MB
+Latency Jitter (StdDev): 346.418350µs
 
-Dummy server stopped successfully
 ```
-
-With 10 clients, throughput should be ~ *6,702,1269* m/s
 
 
 ### TCP
