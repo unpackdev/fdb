@@ -3,6 +3,7 @@ package benchmark
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/dustin/go-humanize"
 	"os"
 	"time"
 )
@@ -20,8 +21,8 @@ type Report struct {
 	LatencyHistogram []time.Duration `json:"latency_histogram"`
 }
 
-// NewBenchmarkReport creates a new benchmark report.
-func NewBenchmarkReport() *Report {
+// NewReport creates a new benchmark report.
+func NewReport() *Report {
 	return &Report{
 		LatencyHistogram: make([]time.Duration, 0),
 	}
@@ -36,7 +37,7 @@ func (r *Report) PrintReport() {
 	fmt.Printf("Failed Messages: %d\n", r.FailedMessages)
 	fmt.Printf("Total Duration: %s\n", r.TotalDuration)
 	fmt.Printf("Average Latency: %s\n", r.AvgLatency)
-	fmt.Printf("Throughput: %.2f messages/second\n", r.Throughput)
+	fmt.Printf("Throughput: %s messages/second\n", humanize.Comma(int64(r.Throughput)))
 	fmt.Printf("Memory Used: %d bytes\n", r.MemoryUsed)
 }
 

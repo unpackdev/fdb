@@ -17,7 +17,6 @@ type Server struct {
 	ctx             context.Context
 	cnf             config.DummyTransport
 	handlerRegistry map[types.HandlerType]DummyHandler
-	addr            string
 	stopChan        chan struct{}
 	started         chan struct{}
 }
@@ -42,8 +41,8 @@ func (s *Server) Addr() string {
 // Start starts the UDS server
 func (s *Server) Start() error {
 	s.stopChan = make(chan struct{})
-	s.started = make(chan struct{}) // Initialize the started channel
-	listenAddr := "unix://" + s.addr
+	s.started = make(chan struct{}, 1) // Initialize the started channel
+	listenAddr := "udp://" + s.cnf.Addr()
 	log.Printf("UDS Server started on %s", listenAddr)
 
 	return gnet.Serve(
@@ -67,18 +66,20 @@ func (s *Server) Tick() (delay time.Duration, action gnet.Action) {
 }
 
 // Stop stops the UDS server
-func (s *Server) Stop() {
+func (s *Server) Stop() error {
 	close(s.stopChan)
+	return nil
 }
 
 func (s *Server) WaitStarted() <-chan struct{} {
+	defer close(s.started)
 	return s.started
 }
 
 // OnInitComplete is called when the server starts
 func (s *Server) OnInitComplete(server gnet.Server) (action gnet.Action) {
 	log.Printf("Dummy Server is listening on %s", server.Addr.String())
-	close(s.started) // Signal that the server has started
+	s.started <- struct{}{} // Signal that the server has started
 	return
 }
 

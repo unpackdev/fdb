@@ -19,8 +19,8 @@ var ErrInvalidSuiteType = errors.New("invalid suite type")
 
 // TransportSuite defines a common interface that all transport-specific suites must implement.
 type TransportSuite interface {
-	Start() error
-	Stop()
+	Start(ctx context.Context) error
+	Stop(ctx context.Context) error
 	SetupClient(ctx context.Context) error
 	Run(ctx context.Context) error
 }

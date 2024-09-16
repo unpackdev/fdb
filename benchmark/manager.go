@@ -34,20 +34,22 @@ func (sm *SuiteManager) RegisterSuite(suiteType SuiteType, suite TransportSuite)
 }
 
 // Start starts the suite for the specified SuiteType.
-func (sm *SuiteManager) Start(suiteType SuiteType) error {
+func (sm *SuiteManager) Start(ctx context.Context, suiteType SuiteType) error {
 	suite, exists := sm.Suites[suiteType]
 	if !exists {
 		return fmt.Errorf("suite type %s not found", suiteType)
 	}
-	return suite.Start()
+	return suite.Start(ctx)
 }
 
 // Stop stops the suite for the specified SuiteType.
-func (sm *SuiteManager) Stop(suiteType SuiteType) {
-	suite, exists := sm.Suites[suiteType]
-	if exists {
-		suite.Stop()
+func (sm *SuiteManager) Stop(ctx context.Context, suiteType SuiteType) error {
+	if suite, exists := sm.Suites[suiteType]; exists {
+		if err := suite.Stop(ctx); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 // Run executes the benchmarking logic for the specified SuiteType.

@@ -41,6 +41,11 @@ func BenchmarkCommand() *cli.Command {
 
 			// Configure transports (for now just QUIC)
 			cnf := config.Config{
+				Logger: config.Logger{
+					Enabled:     true,
+					Environment: "development",
+					Level:       "info",
+				},
 				MdbxNodes: []config.MdbxNode{
 					{
 						Name: "benchmark",
@@ -68,7 +73,7 @@ func BenchmarkCommand() *cli.Command {
 						Config: config.DummyTransport{
 							Enabled: true,
 							IPv4:    "127.0.0.1",
-							Port:    4433,
+							Port:    4434,
 							TLS: config.TLS{
 								Key:    "./data/certs/key.pem",
 								Cert:   "./data/certs/cert.pem",
@@ -94,13 +99,13 @@ func BenchmarkCommand() *cli.Command {
 			messagesPerClient := c.Int("messages")
 
 			// Start the suite
-			if err := suiteManager.Start(suiteType); err != nil {
+			if err := suiteManager.Start(c.Context, suiteType); err != nil {
 				return fmt.Errorf("failed to start suite: %w", err)
 			}
-			defer suiteManager.Stop(suiteType)
 
-			// Create benchmark report
-			report := benchmark.NewBenchmarkReport()
+			defer suiteManager.Stop(c.Context, suiteType)
+
+			report := benchmark.NewReport()
 
 			// Create client pool and start the benchmarking process
 			clientPool := benchmark.NewClientPool(totalClients, messagesPerClient, report)

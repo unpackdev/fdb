@@ -36,7 +36,7 @@ func NewQuicSuite(fdbInstance *fdb.FDB) *QuicSuite {
 }
 
 // Start starts the QUIC server for benchmarking.
-func (qs *QuicSuite) Start() error {
+func (qs *QuicSuite) Start(ctx context.Context) error {
 	quicTransport, err := qs.fdbInstance.GetTransportByType(types.QUICTransportType)
 	if err != nil {
 		return fmt.Errorf("failed to retrieve QUIC transport: %w", err)
@@ -68,17 +68,25 @@ func (qs *QuicSuite) Start() error {
 }
 
 // Stop stops the QUIC server and closes the client connection and stream.
-func (qs *QuicSuite) Stop() {
+func (qs *QuicSuite) Stop(ctx context.Context) error {
 	if qs.stream != nil {
-		qs.stream.Close()
+		if err := qs.stream.Close(); err != nil {
+			return err
+		}
 	}
 	if qs.client != nil {
-		qs.client.CloseWithError(0, "closing connection")
+		if err := qs.client.CloseWithError(0, "closing connection"); err != nil {
+			return err
+		}
 	}
 	if qs.quicServer != nil {
-		qs.quicServer.Stop()
-		fmt.Println("QUIC server stopped successfully")
+		if err := qs.quicServer.Stop(); err != nil {
+			return err
+		}
 	}
+
+	fmt.Println("QUIC server stopped successfully")
+	return nil
 }
 
 // SetupClient sets up a QUIC client and stream only once.

@@ -118,6 +118,31 @@ make build && ./build/fdb benchmark --suite-type quic --clients=1 --messages=100
 
 ## Benchmarks
 
+There is a dummy transport, starts the (gnet) UDP and does pretty much nothing. We're going to 
+use that one as a baseline for any other benchmark.
+
+```
+make build && ./build/fdb benchmark --suite-type dummy
+Starting benchmark...
+Dummy server started successfully
+2024/09/16 09:26:54 UDS Server started on udp://127.0.0.1:4434
+2024/09/16 09:26:54 Dummy Server is listening on 127.0.0.1:4434
+
+--- Benchmark Report ---
+Total Clients: 10
+Total Messages: 1000
+Success Messages: 1000
+Failed Messages: 0
+Total Duration: 199.805µs
+Average Latency: 28ns
+Throughput: 6,702,126 m/s
+Memory Used: 0 bytes
+
+Dummy server stopped successfully
+```
+
+With 10 clients, throughput should be ~ *6,702,1269* m/s
+
 ### QUIC
 
 ```

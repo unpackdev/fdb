@@ -47,8 +47,7 @@ func (p *ClientPool) Start(ctx context.Context, suite TransportSuite) error {
 func (p *ClientPool) runClient(ctx context.Context, clientID int, suite TransportSuite) {
 	defer p.poolWg.Done()
 
-	err := suite.SetupClient(ctx)
-	if err != nil {
+	if err := suite.SetupClient(ctx); err != nil {
 		fmt.Printf("Client %d setup failed: %v\n", clientID, err)
 		return
 	}

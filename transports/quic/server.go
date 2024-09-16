@@ -202,10 +202,14 @@ func (s *Server) handleStream(conn quic.Connection, stream quic.Stream) {
 }
 
 // Stop stops the QUIC server
-func (s *Server) Stop() {
+func (s *Server) Stop() error {
 	close(s.stopChan)
-	s.listener.Close()
+	if err := s.listener.Close(); err != nil {
+		return err
+	}
+
 	s.wg.Wait()
+	return nil
 }
 
 // WaitStarted returns a channel that is closed when the server has started

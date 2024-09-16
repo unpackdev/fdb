@@ -3,6 +3,7 @@ package config
 import "github.com/unpackdev/fdb/types"
 
 type Config struct {
+	Logger     Logger      `yaml:"logger"`
 	Transports []Transport `yaml:"transports"`
 	MdbxNodes  MdbxNodes   `yaml:"nodes"`
 }
