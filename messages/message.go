@@ -13,10 +13,41 @@ type Message struct {
 	Data    []byte            // The remaining data after the key
 }
 
-// Encode encodes the Message struct into a byte slice
-func (m *Message) Encode() ([]byte, error) {
-	// Add 4 bytes for the length of the data
+// EncodeWithBuffer encodes the Message struct into a provided byte slice (buffer).
+// Assumes the buffer is large enough and avoids allocating new buffers.
+// Designed to be used with sync.Pool
+func (m *Message) EncodeWithBuffer(buf []byte) ([]byte, error) {
+	// Calculate the total message length (1 byte for handler + 32 bytes for key + 4 bytes for data length + actual data)
 	msgLen := 1 + 32 + 4 + len(m.Data)
+
+	// Ensure the buffer is large enough (zero-allocation requires that the buffer be managed externally)
+	if len(buf) < msgLen {
+		return nil, fmt.Errorf("buffer too small, need at least %d bytes", msgLen)
+	}
+
+	// Set handler type
+	buf[0] = byte(m.Handler)
+
+	// Copy the 32-byte key
+	copy(buf[1:33], m.Key[:])
+
+	// Set the length of the data (4 bytes)
+	binary.BigEndian.PutUint32(buf[33:37], uint32(len(m.Data)))
+
+	// Copy the data
+	copy(buf[37:], m.Data)
+
+	// Return the portion of the buffer that was actually used
+	return buf[:msgLen], nil
+}
+
+// Encode encodes the Message struct into a byte slice.
+// This method allocates a new buffer for every call, unlike EncodeWithBuffer which reuses a buffer.
+func (m *Message) Encode() ([]byte, error) {
+	// Calculate the total message length (1 byte for handler + 32 bytes for key + 4 bytes for data length + actual data)
+	msgLen := 1 + 32 + 4 + len(m.Data)
+
+	// Allocate a new buffer
 	buf := make([]byte, msgLen)
 
 	// Set handler type
@@ -34,7 +65,7 @@ func (m *Message) Encode() ([]byte, error) {
 	return buf, nil
 }
 
-// Decode decodes a byte slice into a Message struct
+// Decode decodes a byte slice into a Message struct without allocating new memory for data.
 func Decode(data []byte) (*Message, error) {
 	if len(data) < 37 { // 1 byte for handler + 32 bytes for key + 4 bytes for data length
 		return nil, fmt.Errorf("data too short, must be at least 37 bytes")
@@ -55,7 +86,7 @@ func Decode(data []byte) (*Message, error) {
 		return nil, fmt.Errorf("data length mismatch, expected %d bytes but got %d bytes", dataLen, len(data[37:]))
 	}
 
-	// Copy the data
+	// Reuse the data slice instead of allocating a new one
 	msg.Data = data[37 : 37+dataLen]
 
 	return msg, nil

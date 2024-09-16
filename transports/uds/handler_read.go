@@ -1,4 +1,4 @@
-package fdb
+package transport_uds
 
 import (
 	"github.com/panjf2000/gnet"

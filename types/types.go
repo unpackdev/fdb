@@ -4,6 +4,54 @@ import "fmt"
 
 type TransportType int
 
+// String representation of TransportType
+func (t TransportType) String() string {
+	switch t {
+	case UDSTransportType:
+		return "uds"
+	case QUICTransportType:
+		return "quic"
+	case TCPTransportType:
+		return "tcp"
+	case DummyTransportType:
+		return "dummy"
+	default:
+		return "unknown"
+	}
+}
+
+// ParseTransportType parses a string into a TransportType
+func ParseTransportType(s string) (TransportType, error) {
+	switch s {
+	case "uds":
+		return UDSTransportType, nil
+	case "quic":
+		return QUICTransportType, nil
+	case "tcp":
+		return TCPTransportType, nil
+	case "dummy":
+		return DummyTransportType, nil
+	default:
+		return -1, fmt.Errorf("unknown transport type: %s", s)
+	}
+}
+
+// UnmarshalYAML allows TransportType to be correctly unmarshalled from a YAML string
+func (t *TransportType) UnmarshalYAML(unmarshal func(any) error) error {
+	var s string
+	if err := unmarshal(&s); err != nil {
+		return err
+	}
+
+	tt, err := ParseTransportType(s)
+	if err != nil {
+		return err
+	}
+
+	*t = tt
+	return nil
+}
+
 const (
 	UDPTransportType TransportType = iota
 	DummyTransportType

@@ -2,7 +2,7 @@ package pprof
 
 import (
 	"context"
-	"github.com/unpackdev/unpack/pkg/options"
+	"github.com/unpackdev/fdb/config"
 	"go.uber.org/zap"
 	"net/http"
 	_ "net/http/pprof"
@@ -11,11 +11,11 @@ import (
 // Pprof encapsulates the pprof server configuration.
 type Pprof struct {
 	ctx  context.Context
-	opts options.Pprof
+	opts config.Pprof
 }
 
 // New creates a new Pprof instance with the specified listen address.
-func New(ctx context.Context, opts options.Pprof) *Pprof {
+func New(ctx context.Context, opts config.Pprof) *Pprof {
 	return &Pprof{ctx: ctx, opts: opts}
 }
 

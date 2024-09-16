@@ -97,6 +97,10 @@ sysctl -w net.core.rmem_max=7500000
 sysctl -w net.core.wmem_max=7500000
 ```
 
+## TODO
+
+- Due to changes in the entire logic now unit tests are broken. 
+
 ## IDEAS
 
 - P2P Sync... (Supervisors vs. Readers a.k.a. validators vs clients)
@@ -107,13 +111,13 @@ sysctl -w net.core.wmem_max=7500000
 ### Certificates and co.
 
 ```
-make build && ./build/fdb certs --cert-output=./data/certs/cert.pem --key-output=./data/certs/key.pem
+make build && ./build/fdb certs --cert=./data/certs/cert.pem --key=./data/certs/key.pem
 ```
 
 ### Benchmark
 
 ```
-make build && ./build/fdb benchmark --suite-type quic --clients=1 --messages=1000
+make build && ./build/fdb benchmark --suite quic --clients 5 --messages 1000 --type write
 ```
 
 ## Benchmarks
@@ -123,10 +127,6 @@ use that one as a baseline for any other benchmark.
 
 ```
 make build && ./build/fdb benchmark --suite-type dummy
-Starting benchmark...
-Dummy server started successfully
-2024/09/16 09:26:54 UDS Server started on udp://127.0.0.1:4434
-2024/09/16 09:26:54 Dummy Server is listening on 127.0.0.1:4434
 
 --- Benchmark Report ---
 Total Clients: 10
@@ -143,27 +143,68 @@ Dummy server stopped successfully
 
 With 10 clients, throughput should be ~ *6,702,1269* m/s
 
+
+### TCP
+
+
+Write without ACK
+
+```
+--- Benchmark Report ---
+Total Clients: 50
+Messages per Client: 1000000
+Total Messages: 50000000
+Success Messages: 50000000
+Failed Messages: 0
+Total Duration: 7.17357253s
+Average Latency: 3.358µs
+P50 Latency: 2.42µs
+P90 Latency: 2.77µs
+P99 Latency: 6.5µs
+Throughput: 6,970,027 messages/second
+Memory Used: 10.20 MB
+Latency Jitter (StdDev): 30.940890µs
+```
+
+With ACK
+
+```
+--- Benchmark Report ---
+Total Clients: 50
+Messages per Client: 200000
+Total Messages: 10000000
+Success Messages: 10000000
+Failed Messages: 0
+Total Duration: 17.935868899s
+Average Latency: 83.1µs
+P50 Latency: 64.572µs
+P90 Latency: 122.153µs
+P99 Latency: 304.218µs
+Throughput: 557,541 messages/second
+Memory Used: 667.91 MB
+Latency Jitter (StdDev): 148.417551µs
+```
+
 ### QUIC
 
 ```
-make build && ./build/fdb benchmark --suite-type quic --clients=1 --messages=1000
-Starting benchmark...
-2024/09/15 20:55:18 QUIC Server started on 127.0.0.1:4433
-QUIC server started successfully
+make build && ./build/fdb benchmark --suite quic --clients 50 --messages 100000 --type write --timeout 120
 
 --- Benchmark Report ---
-Total Clients: 0
-Total Messages: 1000
-Success Messages: 1000
+Total Clients: 50
+Messages per Client: 100000
+Total Messages: 5000000
+Success Messages: 5000000
 Failed Messages: 0
-Total Duration: 3.135008519s
-Average Latency: 3.130208ms
-Throughput: 318.98 messages/second
-Memory Used: 0 bytes
-QUIC server stopped successfully
+Total Duration: 54.655111416s
+Average Latency: 543.478µs
+P50 Latency: 521.064µs
+P90 Latency: 945.644µs
+P99 Latency: 1.603621ms
+Throughput: 91,482 messages/second
+Memory Used: 17260.96 MB
+Latency Jitter (StdDev): 319.379812µs
 ```
-
-^ This piece of shit is slow as you can see but at least came to the point where I can start doing optimizations.
 
 ## For Developers
 

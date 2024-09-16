@@ -10,6 +10,8 @@ import (
 	"github.com/unpackdev/fdb/transports"
 	transport_dummy "github.com/unpackdev/fdb/transports/dummy"
 	transport_quic "github.com/unpackdev/fdb/transports/quic"
+	transport_tcp "github.com/unpackdev/fdb/transports/tcp"
+	transport_uds "github.com/unpackdev/fdb/transports/uds"
 	"github.com/unpackdev/fdb/types"
 	"go.uber.org/zap"
 )
@@ -41,7 +43,7 @@ func New(ctx context.Context, cnf config.Config) (*FDB, error) {
 	// Create a new transport manager
 	transportManager := transports.NewManager()
 
-	dbM, dbmErr := db.NewManager(ctx, cnf.MdbxNodes)
+	dbM, dbmErr := db.NewManager(ctx, cnf.Mdbx)
 	if dbmErr != nil {
 		return nil, errors.Wrap(dbmErr, "failure to create database manager")
 	}
@@ -55,16 +57,16 @@ func New(ctx context.Context, cnf config.Config) (*FDB, error) {
 
 	for _, transport := range cnf.Transports {
 		switch t := transport.Config.(type) {
-		case config.DummyTransport:
-			udsServer, err := transport_dummy.NewDummyServer(ctx, t)
+		case *config.DummyTransport:
+			udsServer, err := transport_dummy.NewDummyServer(ctx, *t)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to create dummy server")
 			}
 			if err := transportManager.RegisterTransport(types.DummyTransportType, udsServer); err != nil {
 				return nil, errors.Wrap(err, "failed to register UDS transport")
 			}
-		case config.QuicTransport:
-			quicServer, err := transport_quic.NewServer(ctx, t)
+		case *config.QuicTransport:
+			quicServer, err := transport_quic.NewServer(ctx, *t)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to create QUIC server")
 			}
@@ -72,20 +74,36 @@ func New(ctx context.Context, cnf config.Config) (*FDB, error) {
 				return nil, errors.Wrap(err, "failed to register QUIC transport")
 			}
 
-			/*		case config.UdsTransport:
-					udsServer, err := NewUDSServer(t.IPv4)
-					if err != nil {
-						return nil, errors.Wrap(err, "failed to create UDS server")
-					}
-					if err := transportManager.RegisterTransport(types.UDSTransportType, udsServer); err != nil {
-						return nil, errors.Wrap(err, "failed to register UDS transport")
-					}*/
+		case *config.UdsTransport:
+			udsServer, err := transport_uds.NewServer(ctx, *t)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to create UDS server")
+			}
+			if err := transportManager.RegisterTransport(types.UDSTransportType, udsServer); err != nil {
+				return nil, errors.Wrap(err, "failed to register UDS transport")
+			}
+		case *config.TcpTransport:
+			tcpServer, err := transport_tcp.NewServer(ctx, *t)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to create TCP server")
+			}
+			if err := transportManager.RegisterTransport(types.TCPTransportType, tcpServer); err != nil {
+				return nil, errors.Wrap(err, "failed to register TCP transport")
+			}
 		default:
 			return nil, fmt.Errorf("unknown transport type provided: %v", t.GetTransportType())
 		}
 	}
 
 	return fdbInstance, nil
+}
+
+func (fdb *FDB) Start(ctx context.Context, transports ...types.TransportType) error {
+	return nil
+}
+
+func (fdb *FDB) Stop(transports ...types.TransportType) error {
+	return nil
 }
 
 func (fdb *FDB) GetConfig() config.Config {

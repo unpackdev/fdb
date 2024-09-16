@@ -9,13 +9,15 @@ import (
 
 // QuicWriteHandler struct with MDBX database passed in
 type QuicWriteHandler struct {
-	db db.Provider // Pass the MDBX database instance here
+	db     db.Provider     // MDBX database instance
+	writer *db.BatchWriter // Batch writer instance
 }
 
 // NewQuicWriteHandler creates a new QuicWriteHandler with an MDBX database
-func NewQuicWriteHandler(db db.Provider) *QuicWriteHandler {
+func NewQuicWriteHandler(db db.Provider, batchWriter *db.BatchWriter) *QuicWriteHandler {
 	return &QuicWriteHandler{
-		db: db,
+		db:     db,
+		writer: batchWriter,
 	}
 }
 
@@ -24,17 +26,12 @@ func (wh *QuicWriteHandler) HandleMessage(conn quic.Connection, stream quic.Stre
 	// Log the message for debugging purposes
 	//log.Printf("Processing write request: Handler=%d, Key=%x, Data=%s", message.Handler, message.Key, string(message.Data))
 
-	// Write the key and data to the database
-	err := wh.db.Set(message.Key[:], message.Data)
-	if err != nil {
-		log.Printf("Error writing to database: %v", err)
-		_, _ = stream.Write([]byte("Error writing to database"))
-		return
-	}
+	// Buffer the write request with the key as [32]byte
+	wh.writer.BufferWrite(message.Key, message.Data)
 
 	// Send success response
-	_, err = stream.Write([]byte("Message written to database"))
-	if err != nil {
+
+	if _, err := stream.Write([]byte{0x00}); err != nil {
 		log.Printf("Error sending response: %v", err)
 	}
 

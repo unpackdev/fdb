@@ -1,93 +1,170 @@
-package tcp
+package transport_tcp
 
-/*
 import (
-	"encoding/binary"
+	"context"
 	"github.com/panjf2000/gnet"
-	"log"
+	"github.com/pkg/errors"
+	"github.com/unpackdev/fdb/config"
+	"github.com/unpackdev/fdb/types"
+	"go.uber.org/zap"
+	"time"
 )
 
-// TCPServer struct represents the TCP server
-type TCPServer struct {
+// TCPHandler function type for TCP handlers
+type TCPHandler func(c gnet.Conn, frame []byte)
+
+// Server struct represents the TCP server using gnet
+type Server struct {
 	*gnet.EventServer
-	handlerRegistry map[HandlerType]Handler
-	addr            string
+	ctx             context.Context
+	handlerRegistry map[types.HandlerType]TCPHandler
+	cnf             config.TcpTransport
+	stopChan        chan struct{}
+	started         chan struct{}
 }
 
-// NewTCPServer creates a new TCPServer instance
-func NewTCPServer(addr string) *TCPServer {
-	return &TCPServer{
-		handlerRegistry: make(map[HandlerType]Handler),
-		addr:            addr,
+// NewServer creates a new TCP Server instance using the provided configuration
+func NewServer(ctx context.Context, cnf config.TcpTransport) (*Server, error) {
+	server := &Server{
+		ctx:             ctx,
+		handlerRegistry: make(map[types.HandlerType]TCPHandler),
+		cnf:             cnf,
+		stopChan:        make(chan struct{}),
+		started:         make(chan struct{}),
+	}
+
+	return server, nil
+}
+
+// Addr returns the TCP address as a string
+func (s *Server) Addr() string {
+	return s.cnf.Addr()
+}
+
+// Start starts the TCP server using the provided configuration
+func (s *Server) Start() error {
+	s.stopChan = make(chan struct{})
+	s.started = make(chan struct{}) // Initialize the started channel
+	listenAddr := s.cnf.Addr()
+	zap.L().Info("Starting TCP Server", zap.String("addr", listenAddr))
+
+	// Create an error channel to capture errors from the goroutine
+	errChan := make(chan error, 1)
+
+	// Start the server asynchronously
+	go func() {
+		err := gnet.Serve(
+			s, listenAddr,
+			gnet.WithMulticore(true),
+			gnet.WithReusePort(true),
+			gnet.WithSocketRecvBuffer(1024*64),
+			gnet.WithLockOSThread(true),
+			gnet.WithTicker(true),
+			gnet.WithTCPNoDelay(gnet.TCPNoDelay),
+		)
+		if err != nil {
+			errChan <- err
+			return
+		}
+		close(errChan) // No error, close the channel
+	}()
+
+	// Wait until OnInitComplete sends a signal or an error occurs
+	select {
+	case <-s.started:
+		close(s.started)
+		zap.L().Info("TCP Server successfully started", zap.String("addr", listenAddr))
+		return nil
+	case err := <-errChan:
+		if err != nil {
+			return errors.Wrap(err, "failed to start TCP server")
+		}
+		return nil
+	case <-time.After(2 * time.Second): // Wait for up to 2 seconds
+		return errors.New("TCP server did not start in time")
 	}
 }
 
-// RegisterHandler registers a handler for a specific action
-func (s *TCPServer) RegisterHandler(actionType HandlerType, handler Handler) {
-	s.handlerRegistry[actionType] = handler
+// Tick is called periodically by gnet
+func (s *Server) Tick() (delay time.Duration, action gnet.Action) {
+	select {
+	case <-s.stopChan:
+		return 0, gnet.Shutdown
+	default:
+		return time.Second, gnet.None
+	}
 }
 
-// DeregisterHandler deregisters a handler for a specific action
-func (s *TCPServer) DeregisterHandler(actionType HandlerType) {
-	delete(s.handlerRegistry, actionType)
+// Stop stops the TCP server
+func (s *Server) Stop() error {
+	zap.L().Info("Stopping TCP Server", zap.String("addr", s.cnf.Addr()))
+	close(s.stopChan)
+
+	zap.L().Info("TCP Server stopped successfully", zap.String("addr", s.cnf.Addr()))
+	return nil
 }
 
-// Start starts the TCP server
-func (s *TCPServer) Start() error {
-	// Use LengthFieldBasedFrameCodec for message framing
-	return gnet.Serve(s, s.addr, gnet.WithMulticore(true), gnet.WithCodec(gnet.LengthFieldBasedFrameCodec{
-		EncoderConfig: gnet.EncoderConfig{
-			ByteOrder:                       binary.BigEndian,
-			LengthFieldLength:               4,
-			LengthAdjustment:                0,
-			LengthIncludesLengthFieldLength: false,
-		},
-		DecoderConfig: gnet.DecoderConfig{
-			ByteOrder:           binary.BigEndian,
-			LengthFieldOffset:   0,
-			LengthFieldLength:   4,
-			LengthAdjustment:    0,
-			InitialBytesToStrip: 4,
-		},
-	}))
+// WaitStarted returns the started channel for waiting until the server starts
+func (s *Server) WaitStarted() <-chan struct{} {
+	return s.started
 }
 
 // OnInitComplete is called when the server starts
-func (s *TCPServer) OnInitComplete(server gnet.Server) (action gnet.Action) {
-	log.Printf("TCP Server started on %s", server.Addr.String())
-	return
+func (s *Server) OnInitComplete(server gnet.Server) (action gnet.Action) {
+	zap.L().Info("TCP Server is listening", zap.String("addr", server.Addr.String()))
+	s.started <- struct{}{} // Signal that the server has started
+	return gnet.None
 }
 
 // React handles incoming data
-func (s *TCPServer) React(frame []byte, c gnet.Conn) (out []byte, action gnet.Action) {
+func (s *Server) React(frame []byte, c gnet.Conn) (out []byte, action gnet.Action) {
 	if len(frame) < 1 {
-		// Invalid frame
-		log.Println("Received empty frame")
-		return
+		zap.L().Warn("Invalid action received", zap.String("addr", c.RemoteAddr().String()))
+		return []byte("ERROR: Invalid action"), gnet.None
 	}
 
+	// Parse the action type
 	actionType, err := s.parseActionType(frame)
 	if err != nil {
-		log.Printf("Error parsing action type: %v", err)
-		return
+		//zap.L().Warn("Failed to parse action type", zap.Error(err), zap.String("addr", c.RemoteAddr().String()))
+		return []byte("ERROR: Invalid action"), gnet.None
 	}
 
+	// Check if the handler exists
 	handler, exists := s.handlerRegistry[actionType]
 	if !exists {
-		log.Printf("Handler not found for action type: %v", actionType)
-		return
+		zap.L().Warn("Unknown action type", zap.Int("action_type", int(actionType)), zap.String("addr", c.RemoteAddr().String()))
+		return []byte("ERROR: Unknown action"), gnet.None
 	}
 
+	// Call the handler
 	handler(c, frame)
-	return
+	return nil, gnet.None
 }
 
 // parseActionType parses the action type from the frame
-func (s *TCPServer) parseActionType(frame []byte) (HandlerType, error) {
+func (s *Server) parseActionType(frame []byte) (types.HandlerType, error) {
 	if len(frame) < 1 {
 		return 0, errors.New("invalid action: frame too short")
 	}
 
-	return HandlerType(frame[0]), nil
+	var actionType types.HandlerType
+	err := actionType.FromByte(frame[0])
+	if err != nil {
+		return 0, err
+	}
+
+	return actionType, nil
 }
-*/
+
+// RegisterHandler registers a handler for a specific action
+func (s *Server) RegisterHandler(actionType types.HandlerType, handler TCPHandler) {
+	zap.L().Debug("Registering handler", zap.Int("action_type", int(actionType)))
+	s.handlerRegistry[actionType] = handler
+}
+
+// DeregisterHandler deregisters a handler for a specific action
+func (s *Server) DeregisterHandler(actionType types.HandlerType) {
+	zap.L().Debug("Deregistering handler", zap.Int("action_type", int(actionType)))
+	delete(s.handlerRegistry, actionType)
+}

@@ -1,12 +1,14 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
+	"github.com/pkg/errors"
 	"github.com/unpackdev/fdb"
 	"github.com/unpackdev/fdb/benchmark"
 	"github.com/unpackdev/fdb/config"
-	"github.com/unpackdev/fdb/types"
 	"github.com/urfave/cli/v2"
+	"time"
 )
 
 // BenchmarkCommand returns a cli.Command that benchmarks the real client.
@@ -16,9 +18,19 @@ func BenchmarkCommand() *cli.Command {
 		Usage: "Run benchmark tests on different transport protocols",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Name:  "suite-type",
-				Usage: "Specify the suite type (e.g., quic)",
-				Value: "quic", // Default to QUIC
+				Name:  "config",
+				Usage: "Path where benchmark configuration can be found",
+				Value: "./benchmark.yaml",
+			},
+			&cli.StringFlag{
+				Name:  "suite",
+				Usage: "Specify the suite type (e.g., quic, dummy)",
+				Value: "dummy", // Default to DUMMY
+			},
+			&cli.StringFlag{
+				Name:  "type",
+				Usage: "Specify the benchmark type (e.g., write, read)",
+				Value: "write", // Default to write benchmark
 			},
 			&cli.IntFlag{
 				Name:  "clients",
@@ -28,64 +40,29 @@ func BenchmarkCommand() *cli.Command {
 			&cli.IntFlag{
 				Name:  "messages",
 				Usage: "Number of messages per client",
-				Value: 100, // Default to 100 messages per client
+				Value: 100000, // Default to 100000 messages per client
 			},
 			&cli.StringFlag{
-				Name:  "report-output",
+				Name:  "output",
 				Usage: "Path to save the JSON report (optional)",
 				Value: "", // Default to no export
 			},
+			&cli.IntFlag{
+				Name:  "timeout",
+				Usage: "Specify the timeout for the benchmark in seconds",
+				Value: 60, // Default to 60 seconds timeout
+			},
 		},
 		Action: func(c *cli.Context) error {
-			fmt.Println("Starting benchmark...")
-
-			// Configure transports (for now just QUIC)
-			cnf := config.Config{
-				Logger: config.Logger{
-					Enabled:     true,
-					Environment: "development",
-					Level:       "info",
-				},
-				MdbxNodes: []config.MdbxNode{
-					{
-						Name: "benchmark",
-						Path: "/tmp/",
-					},
-				},
-				Transports: []config.Transport{
-					{
-						Type:    types.QUICTransportType,
-						Enabled: true,
-						Config: config.QuicTransport{
-							Enabled: true,
-							IPv4:    "127.0.0.1",
-							Port:    4433,
-							TLS: config.TLS{
-								Key:    "./data/certs/key.pem",
-								Cert:   "./data/certs/cert.pem",
-								RootCA: "",
-							},
-						},
-					},
-					{
-						Type:    types.DummyTransportType,
-						Enabled: true,
-						Config: config.DummyTransport{
-							Enabled: true,
-							IPv4:    "127.0.0.1",
-							Port:    4434,
-							TLS: config.TLS{
-								Key:    "./data/certs/key.pem",
-								Cert:   "./data/certs/cert.pem",
-								RootCA: "",
-							},
-						},
-					},
-				},
+			// Load the config.yaml file
+			configPath := c.String("config")
+			cfg, err := config.LoadConfig(configPath)
+			if err != nil {
+				return errors.Wrap(err, "failed to load configuration")
 			}
 
 			// Initialize FDB
-			fdbc, err := fdb.New(c.Context, cnf)
+			fdbc, err := fdb.New(c.Context, *cfg)
 			if err != nil {
 				return fmt.Errorf("failed to initialize FDB: %w", err)
 			}
@@ -93,10 +70,15 @@ func BenchmarkCommand() *cli.Command {
 			// Create a new suite manager
 			suiteManager := benchmark.NewSuiteManager(fdbc)
 
-			// Get the suite type and number of clients/messages from CLI flags
-			suiteType := benchmark.SuiteType(c.String("suite-type"))
+			// Set up signal handling for graceful shutdown
+			handleBenchmarkSignals(c.Context, suiteManager, benchmark.SuiteType(c.String("suite-type")))
+
+			// Get the suite type, benchmark type, and number of clients/messages from CLI flags
+			suiteType := benchmark.SuiteType(c.String("suite"))
+			benchmarkType := c.String("type")
 			totalClients := c.Int("clients")
 			messagesPerClient := c.Int("messages")
+			timeout := time.Duration(c.Int("timeout")) * time.Second
 
 			// Start the suite
 			if err := suiteManager.Start(c.Context, suiteType); err != nil {
@@ -107,23 +89,31 @@ func BenchmarkCommand() *cli.Command {
 
 			report := benchmark.NewReport()
 
-			// Create client pool and start the benchmarking process
-			clientPool := benchmark.NewClientPool(totalClients, messagesPerClient, report)
-			err = clientPool.Start(c.Context, suiteManager.Suites[suiteType])
-			if err != nil {
-				return fmt.Errorf("failed to run client pool: %w", err)
-			}
+			// Create a context with a timeout
+			ctx, cancel := context.WithTimeout(c.Context, timeout)
+			defer cancel()
 
-			// Finalize the results (latency, throughput)
-			clientPool.Finalize()
+			// Run the appropriate benchmark based on the user's choice (write or read)
+			switch benchmarkType {
+			case "write":
+				if rErr := suiteManager.RunWriteBenchmark(ctx, suiteType, totalClients, messagesPerClient, report); rErr != nil {
+					return errors.Wrap(rErr, "failed to run write benchmark")
+				}
+			case "read":
+				if rErr := suiteManager.RunReadBenchmark(ctx, suiteType, totalClients, messagesPerClient, report); rErr != nil {
+					return errors.Wrap(rErr, "failed to run read benchmark")
+				}
+
+			default:
+				return fmt.Errorf("invalid benchmark type: %s", benchmarkType)
+			}
 
 			// Print report to console
 			report.PrintReport()
 
-			// Optionally export report to JSON
-			reportOutput := c.String("report-output")
-			if reportOutput != "" {
-				if err := report.ExportToJSON(reportOutput); err != nil {
+			// Optional: export report to JSON if the report-output flag is set
+			if outputPath := c.String("output"); outputPath != "" {
+				if err := report.ExportToJSON(outputPath); err != nil {
 					return fmt.Errorf("failed to export report: %w", err)
 				}
 			}
