@@ -8,10 +8,10 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-// ServerCommand returns a cli.Command that benchmarks the real client
-func ServerCommand() *cli.Command {
+// ServeCommand returns a cli.Command that benchmarks the real client
+func ServeCommand() *cli.Command {
 	return &cli.Command{
-		Name:  "start",
+		Name:  "serve",
 		Usage: "Start (f)db transport server",
 		Flags: []cli.Flag{
 			&cli.StringFlag{

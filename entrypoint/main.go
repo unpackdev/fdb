@@ -10,18 +10,16 @@ import (
 func main() {
 	app := &cli.App{
 		Name:  "(f)db",
-		Usage: "Lorem ipsum dolor sit amet...",
+		Usage: "Fast Database Transports",
 		Commands: []*cli.Command{
-			// Load commands from the cmd package
-			cmd.CertsCommand(),
-			cmd.ServerCommand(),
-			cmd.BenchmarkCommand(), // Load the 'test' command
+			cmd.CertsCommand(),     // Command for handling certificates
+			cmd.BenchmarkCommand(), // Command for running benchmarks
+			cmd.ServeCommand(),     // Command to start the server
 		},
 	}
 
 	// Run the app and handle any errors
-	err := app.Run(os.Args)
-	if err != nil {
+	if err := app.Run(os.Args); err != nil {
 		log.Fatalf("Error running CLI: %v", err)
 	}
 }
