@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  fdb:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    restart: always
+    environment:
+      - ENV_VAR1=value1
+      - ENV_VAR2=value2
+    volumes:
+      - ./data:/app/data
+    command: ["./fdb", "serve"]
+
+# Optional services like databases, message queues, etc.
