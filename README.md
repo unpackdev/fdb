@@ -154,6 +154,8 @@ Latency Jitter (StdDev): 346.418350µs
 #### Write Benchmark
 
 ```
+make build && ./build/fdb benchmark --suite tcp --clients 50 --messages 200000 --type write --timeout 120
+
 --- Benchmark Report ---
 Total Clients: 50
 Messages per Client: 200000
@@ -198,6 +200,8 @@ Latency Jitter (StdDev): 319.379812µs
 #### Write Benchmark
 
 ```
+make build && ./build/fdb benchmark --suite udp --clients 50 --messages 100000 --type write --timeout 120
+
 --- Benchmark Report ---
 Total Clients: 50
 Messages per Client: 100000
