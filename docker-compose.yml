@@ -6,13 +6,33 @@ services:
       context: .
       dockerfile: Dockerfile
     ports:
-      - "8080:8080"
+      - "8080:8080" # Map the container's port 8080 to the host
     restart: always
     environment:
       - ENV_VAR1=value1
       - ENV_VAR2=value2
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317 # OpenTelemetry Collector endpoint
     volumes:
       - ./data:/app/data
     command: ["./fdb", "serve"]
+    depends_on:
+      - otel-collector # Ensure fdb service starts after the OpenTelemetry collector
 
-# Optional services like databases, message queues, etc.
+  otel-collector:
+    image: otel/opentelemetry-collector:latest
+    ports:
+      - "4317:4317" # OTLP gRPC receiver
+      - "4318:4318" # OTLP HTTP receiver
+      - "55680:55680" # OpenTelemetry protocol receiver
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml # Mount the custom config for the OpenTelemetry collector
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.29
+    ports:
+      - "16686:16686" # Jaeger UI
+      - "14250:14250" # Jaeger gRPC
+      - "6831:6831/udp" # Jaeger UDP port for traces
+    environment:
+      - COLLECTOR_ZIPKIN_HTTP_PORT=9411
