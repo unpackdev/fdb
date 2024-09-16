@@ -24,6 +24,7 @@ func NewSuiteManager(fdb *fdb.FDB) *SuiteManager {
 	manager.RegisterSuite(DummySuiteType, NewDummySuite(fdb, 500))
 	manager.RegisterSuite(UDSSuiteType, NewUdsSuite(fdb, 500))
 	manager.RegisterSuite(TCPSuiteType, NewTcpSuite(fdb, 500))
+	manager.RegisterSuite(UDPSuiteType, NewUdpSuite(fdb, 500))
 
 	return manager
 }

@@ -125,6 +125,10 @@ make build && ./build/fdb benchmark --suite quic --clients 5 --messages 1000 --t
 There is a dummy transport, starts the (gnet) UDP and does pretty much nothing. We're going to 
 use that one as a baseline for any other benchmark.
 
+### DUMMY
+
+#### Write Benchmark
+
 ```
 make build && ./build/fdb benchmark --suite dummy --clients 50 --messages 1000000 --type write --timeout 120
 
@@ -145,30 +149,9 @@ Latency Jitter (StdDev): 346.418350µs
 
 ```
 
-
 ### TCP
 
-
-Write without ACK
-
-```
---- Benchmark Report ---
-Total Clients: 50
-Messages per Client: 1000000
-Total Messages: 50000000
-Success Messages: 50000000
-Failed Messages: 0
-Total Duration: 7.17357253s
-Average Latency: 3.358µs
-P50 Latency: 2.42µs
-P90 Latency: 2.77µs
-P99 Latency: 6.5µs
-Throughput: 6,970,027 messages/second
-Memory Used: 10.20 MB
-Latency Jitter (StdDev): 30.940890µs
-```
-
-With ACK
+#### Write Benchmark
 
 ```
 --- Benchmark Report ---
@@ -189,6 +172,8 @@ Latency Jitter (StdDev): 148.417551µs
 
 ### QUIC
 
+#### Write Benchmark
+
 ```
 make build && ./build/fdb benchmark --suite quic --clients 50 --messages 100000 --type write --timeout 120
 
@@ -206,6 +191,27 @@ P99 Latency: 1.603621ms
 Throughput: 91,482 messages/second
 Memory Used: 17260.96 MB
 Latency Jitter (StdDev): 319.379812µs
+```
+
+### UDP
+
+#### Write Benchmark
+
+```
+--- Benchmark Report ---
+Total Clients: 50
+Messages per Client: 100000
+Total Messages: 5000000
+Success Messages: 5000000
+Failed Messages: 0
+Total Duration: 16.771189289s
+Average Latency: 169.167µs
+P50 Latency: 128.563µs
+P90 Latency: 307.689µs
+P99 Latency: 877.784µs
+Throughput: 298,130 messages/second
+Memory Used: 678.49 MB
+Latency Jitter (StdDev): 173.144187µs
 ```
 
 ## For Developers

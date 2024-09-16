@@ -116,7 +116,13 @@ func (t *Transport) UnmarshalYAML(value *yaml.Node) error {
 		}
 		config.Type = types.TCPTransportType
 		t.Config = &config
-
+	case types.UDPTransportType:
+		var config UdpTransport
+		if err := aux.Config.Decode(&config); err != nil {
+			return fmt.Errorf("failed to unmarshal UDP transport config: %w", err)
+		}
+		config.Type = types.UDPTransportType
+		t.Config = &config
 	default:
 		return fmt.Errorf("unsupported transport type: %s", t.Type)
 	}

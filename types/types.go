@@ -13,6 +13,8 @@ func (t TransportType) String() string {
 		return "quic"
 	case TCPTransportType:
 		return "tcp"
+	case UDPTransportType:
+		return "udp"
 	case DummyTransportType:
 		return "dummy"
 	default:
@@ -29,6 +31,8 @@ func ParseTransportType(s string) (TransportType, error) {
 		return QUICTransportType, nil
 	case "tcp":
 		return TCPTransportType, nil
+	case "udp":
+		return UDPTransportType, nil
 	case "dummy":
 		return DummyTransportType, nil
 	default:

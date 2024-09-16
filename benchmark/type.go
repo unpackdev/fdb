@@ -12,6 +12,7 @@ const (
 	QUICSuite      SuiteType = "quic"
 	UDSSuiteType   SuiteType = "uds" // Example for future transport suites
 	TCPSuiteType   SuiteType = "tcp"
+	UDPSuiteType   SuiteType = "udp"
 	DummySuiteType SuiteType = "dummy"
 )
 

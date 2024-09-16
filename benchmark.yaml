@@ -10,7 +10,7 @@ mdbx:
     path: /tmp/
     maxReaders: 4096
     maxSize: 1024            # Maximum database size (1 TB)
-    minSize: 1               # Minimum database size (1 MB)
+    minSize: 1               # Minimum database size (1 GB)
     growthStep: 4096         # Growth step size (4 KB)
     filePermissions: 0600    # File permissions for the database
 
@@ -42,6 +42,16 @@ transports:
       ipv4: 127.0.0.1
       port: 5011
       tls:
+        insecure: true
+        key: ./data/certs/key.pem
+        cert: ./data/certs/cert.pem
+
+  - type: udp
+    enabled: true
+    config:
+      ipv4: 127.0.0.1
+      port: 5022
+      dtls:
         insecure: true
         key: ./data/certs/key.pem
         cert: ./data/certs/cert.pem

@@ -1,4 +1,4 @@
-package transport_tcp
+package transport_udp
 
 import (
 	"github.com/panjf2000/gnet"
@@ -6,20 +6,20 @@ import (
 	"log"
 )
 
-// TCPReadHandler struct with MDBX database passed in
-type TCPReadHandler struct {
+// UDPReadHandler struct with MDBX database passed in
+type UDPReadHandler struct {
 	db db.Provider // MDBX database instance
 }
 
-// NewTCPReadHandler creates a new TCPReadHandler with an MDBX database
-func NewTCPReadHandler(db db.Provider) *TCPReadHandler {
-	return &TCPReadHandler{
+// NewUDPReadHandler creates a new UDPReadHandler with an MDBX database
+func NewUDPReadHandler(db db.Provider) *UDPReadHandler {
+	return &UDPReadHandler{
 		db: db,
 	}
 }
 
-// HandleMessage processes the incoming message using the TCPReadHandler
-func (rh *TCPReadHandler) HandleMessage(c gnet.Conn, frame []byte) {
+// HandleMessage processes the incoming message using the UDPReadHandler
+func (rh *UDPReadHandler) HandleMessage(c gnet.Conn, frame []byte) {
 	if len(frame) < 33 { // 1 byte action + 32-byte key
 		log.Printf("Invalid message length: %d, expected at least 33 bytes", len(frame))
 		c.SendTo([]byte("Invalid message format"))
@@ -44,5 +44,5 @@ func (rh *TCPReadHandler) HandleMessage(c gnet.Conn, frame []byte) {
 	}
 
 	// Send the value back to the client
-	c.SendTo([]byte{0x01})
+	c.SendTo(value)
 }

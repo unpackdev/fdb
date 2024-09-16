@@ -3,6 +3,7 @@ package fdb
 import (
 	"context"
 	"fmt"
+	"github.com/davecgh/go-spew/spew"
 	"github.com/pkg/errors"
 	"github.com/unpackdev/fdb/config"
 	"github.com/unpackdev/fdb/db"
@@ -11,6 +12,7 @@ import (
 	transport_dummy "github.com/unpackdev/fdb/transports/dummy"
 	transport_quic "github.com/unpackdev/fdb/transports/quic"
 	transport_tcp "github.com/unpackdev/fdb/transports/tcp"
+	transport_udp "github.com/unpackdev/fdb/transports/udp"
 	transport_uds "github.com/unpackdev/fdb/transports/uds"
 	"github.com/unpackdev/fdb/types"
 	"go.uber.org/zap"
@@ -89,6 +91,15 @@ func New(ctx context.Context, cnf config.Config) (*FDB, error) {
 			}
 			if err := transportManager.RegisterTransport(types.TCPTransportType, tcpServer); err != nil {
 				return nil, errors.Wrap(err, "failed to register TCP transport")
+			}
+		case *config.UdpTransport:
+			spew.Dump(cnf)
+			udpServer, err := transport_udp.NewServer(ctx, *t)
+			if err != nil {
+				return nil, errors.Wrap(err, "failed to create UDP server")
+			}
+			if err := transportManager.RegisterTransport(types.UDPTransportType, udpServer); err != nil {
+				return nil, errors.Wrap(err, "failed to register UDP transport")
 			}
 		default:
 			return nil, fmt.Errorf("unknown transport type provided: %v", t.GetTransportType())
