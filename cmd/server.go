@@ -4,6 +4,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/unpackdev/fdb"
 	"github.com/unpackdev/fdb/config"
+	"github.com/unpackdev/fdb/types"
 	"github.com/urfave/cli/v2"
 )
 
@@ -16,7 +17,7 @@ func ServerCommand() *cli.Command {
 			&cli.StringFlag{
 				Name:  "config",
 				Usage: "Path where benchmark configuration can be found",
-				Value: "./benchmark.yaml",
+				Value: "./config.yaml",
 			},
 			&cli.StringSliceFlag{
 				Name:  "transports",
@@ -25,7 +26,6 @@ func ServerCommand() *cli.Command {
 			},
 		},
 		Action: func(c *cli.Context) error {
-			// Load the config.yaml file
 			configPath := c.String("config")
 			cfg, err := config.LoadConfig(configPath)
 			if err != nil {
@@ -38,8 +38,16 @@ func ServerCommand() *cli.Command {
 				return errors.Wrap(err, "failed to initialize FDB")
 			}
 
-			_ = fdbc
-			return nil
+			transports := make([]types.TransportType, 0)
+			for _, t := range c.StringSlice("transports") {
+				tt, ttErr := types.ParseTransportType(t)
+				if ttErr != nil {
+					return errors.Wrapf(ttErr, "invalid transport type: %s", t)
+				}
+
+				transports = append(transports, tt)
+			}
+			return fdbc.Start(c.Context, transports...)
 		},
 	}
 }

@@ -3,7 +3,6 @@ package fdb
 import (
 	"context"
 	"fmt"
-	"github.com/davecgh/go-spew/spew"
 	"github.com/pkg/errors"
 	"github.com/unpackdev/fdb/config"
 	"github.com/unpackdev/fdb/db"
@@ -19,10 +18,10 @@ import (
 )
 
 type FDB struct {
-	ctx              context.Context
-	config           config.Config
-	transportManager *transports.Manager
-	dbManager        *db.Manager
+	ctx       context.Context
+	config    config.Config
+	tm        *transports.Manager
+	dbManager *db.Manager
 }
 
 func New(ctx context.Context, cnf config.Config) (*FDB, error) {
@@ -51,10 +50,10 @@ func New(ctx context.Context, cnf config.Config) (*FDB, error) {
 	}
 
 	fdbInstance := &FDB{
-		ctx:              ctx,
-		config:           cnf,
-		transportManager: transportManager,
-		dbManager:        dbM,
+		ctx:       ctx,
+		config:    cnf,
+		tm:        transportManager,
+		dbManager: dbM,
 	}
 
 	for _, transport := range cnf.Transports {
@@ -93,7 +92,6 @@ func New(ctx context.Context, cnf config.Config) (*FDB, error) {
 				return nil, errors.Wrap(err, "failed to register TCP transport")
 			}
 		case *config.UdpTransport:
-			spew.Dump(cnf)
 			udpServer, err := transport_udp.NewServer(ctx, *t)
 			if err != nil {
 				return nil, errors.Wrap(err, "failed to create UDP server")
@@ -126,10 +124,10 @@ func (fdb *FDB) GetDbManager() *db.Manager {
 }
 
 func (fdb *FDB) GetTransportManager() *transports.Manager {
-	return fdb.transportManager
+	return fdb.tm
 }
 
 // GetTransportByType allows retrieval of specific transport from the manager
 func (fdb *FDB) GetTransportByType(tType types.TransportType) (transports.Transport, error) {
-	return fdb.transportManager.GetTransport(tType)
+	return fdb.tm.GetTransport(tType)
 }
