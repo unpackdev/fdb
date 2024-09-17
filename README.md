@@ -10,19 +10,77 @@
 
 # (f)db
 
-**NOTE: At this moment I am adding all possible faster ways, including TCP, to be able to do proper benchmarking first.
-In the future, I may drop transports that prove to be inefficient based on benchmark results. At the same time I will slowly start to write wrappers around the packages for convenient usage incl. deployments.**
+**NOTE: At the moment, I am exploring and integrating all potential high-performance transport options, including 
+TCP, to establish a solid foundation for benchmarking. In the future, I may discard any transport methods that 
+prove inefficient based on the benchmarking results. Concurrently, I will begin writing convenient wrappers around 
+the underlying packages to streamline usage and deployments.**
 
-**UNDER ACTIVE DEVELOPMENT**
+**CURRENTLY UNDER ACTIVE DEVELOPMENT**
 
-This is currently a prototype, with the idea of building incredibly fast transport layers on 
-top of key-value (KV) databases. The goal is to allow one or multiple instances of these 
-databases to be started and cross-shared in user space or accessed remotely bypassing general locks
-that are enforced in KV databases or some of the OLAP databases such as DuckDB.
+**Meaning everything about this repository can be changed. Best to keep track, not use the code yet besides to play with it...**
+
+(f)db is born from frustrations experienced while working with key-value (KV) databases. 
+The goal is to build extremely fast transport layers on top of KV databases.
 
 This project is going to be either f**k databases or fast database... There is no third solution...
 
-Though this will be hard to achieve without DPDK. Will not overkill the prototype with it for now...
+### Why is this necessary, and is it just another over-engineered solution in the web world?
+
+It might not be essential for every use case, but it becomes particularly interesting if you require a distributed key-value database with replicated data across multiple nodes. 
+Additionally, it offers the ability to access and manage data efficiently across multiple servers, each sharing a single connection endpoint, 
+to offload data to different databases and/or nodes.
+
+For instance, imagine using the same client to seamlessly push data to either an MDBX or DuckDB instance, 
+regardless of whether they are hosted on the same or different servers. 
+This abstraction provides flexibility in data management and replication across distributed systems.
+
+### Why I need this?
+
+I require a solution that enables different services to write to and read from different databases while using a unified transport layer. Achieving this with existing tools is complex, if not impossible, without a dedicated transport layer on top of the database. This transport layer allows for cross-service communication and interaction with the underlying database.
+
+This project addresses that gap by building a high-performance, flexible transport layer that enables seamless interaction with various databases in a distributed environment.
+
+### Why Multiple Transports?
+
+One core feature of (f)db is its support for multiple transport protocols, including UDP, UDS, TCP, and QUIC. The reason for this is simple: no single transport protocol is perfect. Each excels in different areas, such as throughput, latency, reliability, or efficiency under specific network conditions.
+
+By offering multiple transport options, (f)db provides the flexibility to fine-tune and optimize performance depending on your specific needs and environment. This allows users to select the most appropriate transport based on their use case, whether it's high-throughput, low-latency, or optimized for specific infrastructure.
+
+### Networking
+
+This project uses [gnet](https://github.com/panjf2000/gnet), an event-driven, high-performance networking library built for Go. gnet is much faster than Go’s standard net package for several reasons:
+
+- Event-Driven Model: gnet uses an event-driven approach, meaning it reacts to specific network events (like data being available to read or connections being closed) instead of continually polling or blocking threads like the standard net package. This reduces CPU overhead and leads to faster processing.
+- Efficient Use of Goroutines: Unlike Go’s net package, gnet minimizes the use of goroutines, which helps reduce the context-switching overhead that can slow down highly concurrent applications. Instead, gnet directly handles network I/O in an optimized way.
+- Zero-Copy Data Handling: gnet offers zero-copy mechanisms for data processing, meaning that memory is not repeatedly copied between kernel and user space, significantly improving throughput for high-performance networking applications.
+- Multi-Event Processing: gnet allows the processing of multiple events within a single loop, which can lead to higher efficiency when handling a large number of simultaneous connections. This feature is particularly valuable for real-time, high-frequency applications that need to handle many clients at once.
+
+By leveraging gnet’s capabilities, (f)db can react quickly to network events, optimize throughput, and minimize latencies, making it ideal for distributed systems where performance is critical.
+
+
+### eBPF Integration
+
+As part of the ongoing development of high-performance transport layers for (f)db, eBPF (Extended Berkeley Packet Filter) has been integrated to enhance packet processing and monitoring capabilities within the network stack.
+
+By leveraging eBPF, we can build efficient, scalable, and secure transport layers that directly interact with network traffic, providing real-time insights and optimizations for packet flow, without adding latency or reducing throughput.
+
+- Real-Time Packet Filtering: With eBPF, (f)db can selectively filter out unnecessary traffic at the kernel level, significantly reducing the amount of data that needs to be processed in user space.
+- Network Performance Insights: eBPF programs can monitor performance metrics, such as packet drops, latencies, and bandwidth usage, allowing for dynamic tuning of transport protocols based on real-time traffic conditions.
+- Low-Latency Processing: eBPF’s ability to operate within the kernel ensures that packet processing happens as close to the hardware as possible, minimizing delays and improving overall system responsiveness.
+- Ring Buffer for Data Handling: eBPF uses a ring buffer to store and transfer network data efficiently to user-space applications, ensuring fast and reliable communication between the kernel and (f)db.
+
+**Right now some basic program exists that can be loaded but it does not do anything more then writing into ring buffer**
+
+This is something to be dealt with later on...
+
+For example, can be used for mass writes without ACK, different types of discoveries or for example DDoS detection or non-whitelisted server ip access, idk...
+
+### Future Considerations
+
+While achieving all these goals without using advanced techniques like DPDK (Data Plane Development Kit) will be challenging, the initial prototype will focus on building a solid foundation. Advanced optimizations can be layered on top later, depending on the project's needs and performance demands.
+
+This approach ensures that (f)db remains both adaptable and scalable, with the potential to handle a variety of use cases while maintaining high performance.
+
 
 ## Diagram
 
@@ -168,6 +226,48 @@ docker-compose up -d
 This will bring up the [(f)db](https://github.com/unpackdev/fdb) instance, [OpenTelemetry](https://opentelemetry.io/docs/languages/go/) collector, and [Jaeger](https://www.jaegertracing.io/) for tracing, making the system ready for production-level monitoring and telemetry.
 
 
+### Loading the eBPF Program
+
+To get started, you'll first need to download and update your local environment by installing the necessary dependencies. 
+Additionally, ensure that you have the (f)db project built to properly load and unload the eBPF program.
+
+```
+make deps
+make build
+sudo setcap cap_bpf+ep c/obj/ebpf_program.o
+```
+
+Next, compile the eBPF program located at [program](./c/src/ebpf_program.c).
+
+```
+make ebpf-build
+```
+
+Before loading the program, identify the network interface you want to bind the eBPF program to. 
+The default interface is typically eth0, but it can vary based on your system configuration. 
+To inspect your available network interfaces, use the following command:
+
+```
+./build/fdb ebpf interfaces
+```
+
+Finally, load the eBPF program onto your desired network interface:
+
+```
+sudo make ebpf-load INTERFACE={interface-name}
+```
+
+Once you’ve completed the above steps, your output should look something like this:
+
+```
+xxx:xx$ make ebpf-build && sudo make ebpf-load INTERFACE=xxx
+eBPF program compiled successfully.
+sudo ip link set dev enp73s0 xdp obj c/obj/ebpf_program.o sec xdp
+eBPF program loaded onto interface xxx.
+```
+
+With that, your eBPF program is successfully loaded and running on the specified interface!
+
 ### Running the Binary
 
 For a more custom or direct deployment, you can build and run the fdb binary manually.
@@ -189,16 +289,6 @@ make build
 
 Ensure that your configuration file is tuned for production, including settings for transports, database paths, logging levels, and performance profiling.
 By default, this will start the server with all the transports and services configured in the config.yaml, ready for high-performance and production use.
-
-## GNET
-
-gnet is a high-performance, lightweight, non-blocking, event-driven networking framework written in pure Go.
-
-gnet is an event-driven networking framework that is ultra-fast and lightweight. It is built from scratch by exploiting epoll and kqueue and it can achieve much higher performance with lower memory consumption than Go net in many specific scenarios.
-
-https://github.com/panjf2000/gnet
-
-
 
 ## QUIC (HTTP/3)
 

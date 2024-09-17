@@ -14,6 +14,7 @@ require (
 )
 
 require (
+	github.com/cilium/ebpf v0.16.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.4 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect

@@ -1,9 +1,11 @@
 package messages
 
 import (
+	"crypto/rand"
 	"encoding/binary"
 	"fmt"
 	"github.com/unpackdev/fdb/types"
+	"io"
 )
 
 // Message struct represents a UDP message
@@ -90,4 +92,42 @@ func Decode(data []byte) (*Message, error) {
 	msg.Data = data[37 : 37+dataLen]
 
 	return msg, nil
+}
+
+// GenerateRandomMessage generates a Message with a random handler and key, and no data.
+func GenerateRandomMessage(handler types.HandlerType) (*Message, error) {
+	key, err := generateRandomKey()
+	if err != nil {
+		return nil, err
+	}
+
+	return &Message{
+		Handler: handler,
+		Key:     key,
+		Data:    nil, // No data for this message
+	}, nil
+}
+
+// GenerateRandomMessageWithData generates a Message with a key, and a specified data payload.
+func GenerateRandomMessageWithData(handler types.HandlerType, data []byte) (*Message, error) {
+	key, err := generateRandomKey()
+	if err != nil {
+		return nil, err
+	}
+
+	return &Message{
+		Handler: handler,
+		Key:     key,
+		Data:    data,
+	}, nil
+}
+
+// Helper function to generate a random 32-byte key.
+func generateRandomKey() ([32]byte, error) {
+	var key [32]byte
+	_, err := io.ReadFull(rand.Reader, key[:])
+	if err != nil {
+		return [32]byte{}, fmt.Errorf("failed to generate random key: %w", err)
+	}
+	return key, nil
 }

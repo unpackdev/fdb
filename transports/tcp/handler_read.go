@@ -1,7 +1,7 @@
 package transport_tcp
 
 import (
-	"github.com/panjf2000/gnet"
+	"github.com/panjf2000/gnet/v2"
 	"github.com/unpackdev/fdb/db"
 	"log"
 )
@@ -22,7 +22,7 @@ func NewTCPReadHandler(db db.Provider) *TCPReadHandler {
 func (rh *TCPReadHandler) HandleMessage(c gnet.Conn, frame []byte) {
 	if len(frame) < 33 { // 1 byte action + 32-byte key
 		log.Printf("Invalid message length: %d, expected at least 33 bytes", len(frame))
-		c.SendTo([]byte("Invalid message format"))
+		c.AsyncWrite([]byte("Invalid message format"), nil)
 		return
 	}
 
@@ -33,16 +33,16 @@ func (rh *TCPReadHandler) HandleMessage(c gnet.Conn, frame []byte) {
 	value, err := rh.db.Get(key)
 	if err != nil {
 		log.Printf("Error reading from database: %v", err)
-		c.SendTo([]byte("Error reading from database"))
+		c.AsyncWrite([]byte("Error reading from database"), nil)
 		return
 	}
 
 	if len(value) == 0 {
 		log.Printf("No value found for key: %x", key)
-		c.SendTo([]byte("No value found for key"))
+		c.AsyncWrite([]byte("No value found for key"), nil)
 		return
 	}
 
 	// Send the value back to the client
-	c.SendTo([]byte{0x01})
+	c.AsyncWrite(value, nil)
 }

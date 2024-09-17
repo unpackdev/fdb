@@ -2,12 +2,14 @@ package transport_tcp
 
 import (
 	"context"
-	"github.com/panjf2000/gnet"
+	"io"
+	"time"
+
+	"github.com/panjf2000/gnet/v2"
 	"github.com/pkg/errors"
 	"github.com/unpackdev/fdb/config"
 	"github.com/unpackdev/fdb/types"
 	"go.uber.org/zap"
-	"time"
 )
 
 // TCPHandler function type for TCP handlers
@@ -15,12 +17,12 @@ type TCPHandler func(c gnet.Conn, frame []byte)
 
 // Server struct represents the TCP server using gnet
 type Server struct {
-	*gnet.EventServer
 	ctx             context.Context
 	handlerRegistry map[types.HandlerType]TCPHandler
 	cnf             config.TcpTransport
 	stopChan        chan struct{}
 	started         chan struct{}
+	eng             gnet.Engine
 }
 
 // NewServer creates a new TCP Server instance using the provided configuration
@@ -45,7 +47,7 @@ func (s *Server) Addr() string {
 func (s *Server) Start(ctx context.Context) error {
 	s.stopChan = make(chan struct{})
 	s.started = make(chan struct{}) // Initialize the started channel
-	listenAddr := s.cnf.Addr()
+	listenAddr := "tcp://" + s.cnf.Addr()
 	zap.L().Info("Starting TCP Server", zap.String("addr", listenAddr))
 
 	// Create an error channel to capture errors from the goroutine
@@ -53,7 +55,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 	// Start the server asynchronously
 	go func() {
-		err := gnet.Serve(
+		err := gnet.Run(
 			s, listenAddr,
 			gnet.WithMulticore(true),
 			gnet.WithReusePort(true),
@@ -69,7 +71,7 @@ func (s *Server) Start(ctx context.Context) error {
 		close(errChan) // No error, close the channel
 	}()
 
-	// Wait until OnInitComplete sends a signal or an error occurs
+	// Wait until OnBoot sends a signal or an error occurs
 	select {
 	case <-s.started:
 		close(s.started)
@@ -85,8 +87,75 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 }
 
-// Tick is called periodically by gnet
-func (s *Server) Tick() (delay time.Duration, action gnet.Action) {
+// OnBoot is called when the server starts
+func (s *Server) OnBoot(eng gnet.Engine) (action gnet.Action) {
+	s.eng = eng // Store the engine
+
+	zap.L().Info("TCP Server is listening", zap.String("addr", s.cnf.Addr()))
+
+	s.started <- struct{}{} // Signal that the server has started
+	return gnet.None
+}
+
+// OnShutdown is called when the server is shutting down
+func (s *Server) OnShutdown(eng gnet.Engine) {
+	zap.L().Info("TCP Server is shutting down", zap.String("addr", s.cnf.Addr()))
+}
+
+// OnOpen is called when a new connection is opened
+func (s *Server) OnOpen(c gnet.Conn) (out []byte, action gnet.Action) {
+	return nil, gnet.None
+}
+
+// OnClose is called when a connection is closed
+func (s *Server) OnClose(c gnet.Conn, err error) (action gnet.Action) {
+	if err != nil && !errors.Is(err, io.EOF) {
+		zap.L().Error(
+			"Connection closed",
+			zap.Error(err),
+			zap.String("addr", c.RemoteAddr().String()),
+		)
+	}
+	return gnet.None
+}
+
+// OnTraffic handles incoming data
+func (s *Server) OnTraffic(c gnet.Conn) (action gnet.Action) {
+	// Read all available data from the connection buffer
+	frame, err := c.Next(-1)
+	if err != nil {
+		zap.L().Error("Error reading data", zap.Error(err))
+		return gnet.Close
+	}
+
+	if len(frame) < 1 {
+		zap.L().Warn("Invalid action received", zap.String("addr", c.RemoteAddr().String()))
+		c.AsyncWrite([]byte("ERROR: Invalid action"), nil)
+		return gnet.None
+	}
+
+	// Parse the action type
+	actionType, err := s.parseActionType(frame)
+	if err != nil {
+		c.AsyncWrite([]byte("ERROR: Invalid action"), nil)
+		return gnet.None
+	}
+
+	// Check if the handler exists
+	handler, exists := s.handlerRegistry[actionType]
+	if !exists {
+		zap.L().Warn("Unknown action type", zap.Int("action_type", int(actionType)), zap.String("addr", c.RemoteAddr().String()))
+		c.AsyncWrite([]byte("ERROR: Unknown action"), nil)
+		return gnet.None
+	}
+
+	// Call the handler
+	handler(c, frame)
+	return gnet.None
+}
+
+// OnTick is called periodically by gnet
+func (s *Server) OnTick() (delay time.Duration, action gnet.Action) {
 	select {
 	case <-s.stopChan:
 		return 0, gnet.Shutdown
@@ -98,7 +167,12 @@ func (s *Server) Tick() (delay time.Duration, action gnet.Action) {
 // Stop stops the TCP server
 func (s *Server) Stop() error {
 	zap.L().Info("Stopping TCP Server", zap.String("addr", s.cnf.Addr()))
-	close(s.stopChan)
+
+	err := s.eng.Stop(s.ctx)
+	if err != nil {
+		zap.L().Error("Error stopping TCP server", zap.Error(err))
+		return err
+	}
 
 	zap.L().Info("TCP Server stopped successfully", zap.String("addr", s.cnf.Addr()))
 	return nil
@@ -107,39 +181,6 @@ func (s *Server) Stop() error {
 // WaitStarted returns the started channel for waiting until the server starts
 func (s *Server) WaitStarted() <-chan struct{} {
 	return s.started
-}
-
-// OnInitComplete is called when the server starts
-func (s *Server) OnInitComplete(server gnet.Server) (action gnet.Action) {
-	zap.L().Info("TCP Server is listening", zap.String("addr", server.Addr.String()))
-	s.started <- struct{}{} // Signal that the server has started
-	return gnet.None
-}
-
-// React handles incoming data
-func (s *Server) React(frame []byte, c gnet.Conn) (out []byte, action gnet.Action) {
-	if len(frame) < 1 {
-		zap.L().Warn("Invalid action received", zap.String("addr", c.RemoteAddr().String()))
-		return []byte("ERROR: Invalid action"), gnet.None
-	}
-
-	// Parse the action type
-	actionType, err := s.parseActionType(frame)
-	if err != nil {
-		//zap.L().Warn("Failed to parse action type", zap.Error(err), zap.String("addr", c.RemoteAddr().String()))
-		return []byte("ERROR: Invalid action"), gnet.None
-	}
-
-	// Check if the handler exists
-	handler, exists := s.handlerRegistry[actionType]
-	if !exists {
-		zap.L().Warn("Unknown action type", zap.Int("action_type", int(actionType)), zap.String("addr", c.RemoteAddr().String()))
-		return []byte("ERROR: Unknown action"), gnet.None
-	}
-
-	// Call the handler
-	handler(c, frame)
-	return nil, gnet.None
 }
 
 // parseActionType parses the action type from the frame
