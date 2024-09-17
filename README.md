@@ -111,11 +111,32 @@ graph TD;
 
 ### Explanation of the Diagram:
 
-1. **Main Entry Point**: This is where the `main.go` resides. The CLI manager (`urfave/cli`) manages various commands.
-2. **Test Command**: This command benchmarks the real client. It includes operations such as client actions and collects metrics like memory usage and execution time.
-3. **gRPC/QUIC/UDP/UDS Servers**: These are different servers supported by `fdb`, each with its own handler registry for processing requests.
-4. **Handlers**: Each server has a `WriteHandler` and `ReadHandler` that interact with the `MDBX` database to set and get key-value pairs.
-5. **Connection Handling**: This is where the incoming connections are processed. It uses `gnet` and `QUIC` to handle streams or frames and react to incoming data.
+1. **Main Entry Point**: This is the main starting point of the application, located in `main.go`. It utilizes the `urfave/cli` package to manage multiple CLI commands, such as `certs`, `benchmark`, and `serve`. Each command has specific functionality related to certificate management, benchmarking, or starting the server.
+
+2. **FDB Initialization**: Both the `benchmark` and `serve` commands initialize an `FDB Instance`. This instance manages core components such as the transport manager, database manager, logger, and performance profiler (`pprof`).
+
+3. **Transport Manager**: The transport manager handles the registration of various transport types. These transports include `QUIC`, `UDS`, `TCP`, `UDP`, and `Dummy` transport types, each having its own corresponding server implementation.
+
+4. **Transports and Servers**: Each registered transport is associated with a specific server. For example, `QUIC` uses a `QUIC Server`, `UDS` uses a `UDS Server`, and so on. Each server has a set of read and write handlers for processing incoming and outgoing messages.
+
+5. **Handlers and Operations**: The read and write handlers are responsible for processing messages. They handle both reading from and writing to the underlying transport and interact with the database manager to store and retrieve data.
+
+6. **Database Manager**: The database manager interacts with the `MDBX` database, providing access to key-value storage. Both read and write handlers utilize the database manager to perform database operations.
+
+7. **Benchmarking Suite**: The `benchmark` command initializes a `Suite Manager` which manages multiple benchmarking suites for each transport type, such as `QUIC Suite`, `Dummy Suite`, `UDS Suite`, `TCP Suite`, and `UDP Suite`. Each suite runs a set of benchmarks that measure the read/write performance of the corresponding transport.
+
+8. **Configuration and Logger**: The FDB instance loads configuration details and initializes a `Zap Logger` for structured logging. Configuration files are used to manage settings for transports, database, and other components.
+
+9. **Pprof Profiler**: The `pprof` profiler is used to monitor the performance of the application. It is set up within the FDB instance and exposes a profiling server for detailed analysis of memory and CPU usage during runtime.
+
+10. **Database Interaction**: During both read and write operations, the database manager interacts with the underlying `MDBX` database to store and retrieve data, ensuring efficient key-value storage management.
+
+11. **CLI Commands**:
+- **Certs Command**: Manages certificate generation and handling.
+- **Benchmark Command**: Runs benchmarking tests for each transport, collecting performance metrics like throughput and latency.
+- **Serve Command**: Starts the FDB server with all configured transports.
+
+12. **Legend**: The diagram outlines the key components and their relationships, showing how the transport manager interacts with the servers, handlers, and database, along with the benchmarking and profiling systems.
 
 
 ## GNET
