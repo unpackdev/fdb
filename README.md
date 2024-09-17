@@ -104,7 +104,7 @@ graph TD;
     U --> V[Provides DB Access]
 
     %% Legend
-    classDef component fill:#f9f,stroke:#333,stroke-width:2px;
+    classDef component fill:#fcfcfc,stroke:#333,stroke-width:2px;
     class A,B,C1,C2,C3,D,E,F,G,H,M,N,O,P1,P2,P3,P4,P5,Q,R,S,T,U,V component;
 ```
 
