@@ -139,6 +139,55 @@ graph TD;
 12. **Legend**: The diagram outlines the key components and their relationships, showing how the transport manager interacts with the servers, handlers, and database, along with the benchmarking and profiling systems.
 
 
+## Usage
+
+### As a Library
+
+To include `fdb` in your project, use the following command to install the package:
+
+```bash
+go get github.com/unpackdev/fdb
+```
+
+Make sure to review the documentation for proper integration and usage within your Go application.
+
+### Docker
+
+To run the fdb instance in a production-like environment, along with supporting services like OpenTelemetry and Jaeger for tracing and monitoring, follow these steps:
+- Ensure you have Docker and Docker Compose installed.
+- Clone the repository and start the services using Docker Compose.
+
+```bash
+git clone https://github.com/unpackdev/fdb
+cd fdb
+docker-compose up -d
+```
+
+This will bring up the [(f)db](https://github.com/unpackdev/fdb) instance, [OpenTelemetry](https://opentelemetry.io/docs/languages/go/) collector, and [Jaeger](https://www.jaegertracing.io/) for tracing, making the system ready for production-level monitoring and telemetry.
+
+
+### Running the Binary
+
+For a more custom or direct deployment, you can build and run the fdb binary manually.
+
+- 1: Clone the repository
+
+```bash
+git clone https://github.com/unpackdev/fdb
+cd fdb
+```
+
+- 2: Modify the config.yaml file as per your environment's requirements.
+- 3: Build and start the server
+
+```bash
+make build
+./build/fdb serve
+```
+
+Ensure that your configuration file is tuned for production, including settings for transports, database paths, logging levels, and performance profiling.
+By default, this will start the server with all the transports and services configured in the config.yaml, ready for high-performance and production use.
+
 ## GNET
 
 gnet is a high-performance, lightweight, non-blocking, event-driven networking framework written in pure Go.
