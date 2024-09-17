@@ -26,43 +26,86 @@ Though this will be hard to achieve without DPDK. Will not overkill the prototyp
 
 ```mermaid
 graph TD;
+    %% Main Entry Point and CLI Commands
     A[Main Entry Point - main.go] --> B[CLI Manager - urfave/cli]
-    B --> C1[Test Command - Benchmark Client]
-    B --> C2[Other Commands - TBD]
-    
-    C1 -->|Executes Test Command| D1[Client Operations]
-    C1 -->|Collects Benchmark Data| D2[Memory Usage]
-    C1 -->|Collects Benchmark Data| D3[Execution Time]
-    
-    subgraph gRPC/QUIC/UDP/UDS Servers
-        E1[UDP Server] --> F1[Handler Registry - UDP]
-        E2[QUIC Server] --> F2[Handler Registry - QUIC]
-        E3[UDS Server] --> F3[Handler Registry - UDS]
+    B --> C1[Certs Command]
+    B --> C2[Benchmark Command]
+    B --> C3[Serve Command]
+
+    %% FDB Initialization
+    C2 -->|Initializes| D[FDB Instance]
+    C3 -->|Initializes| D
+
+    %% FDB Components
+    D -->|Creates| E[Transport Manager]
+    D -->|Creates| F[Database Manager]
+    D -->|Sets up| G[Logger]
+    D -->|Configures| H[Pprof Profiler]
+
+    %% Transport Manager and Transports
+    E -->|Registers| I1[QUIC Transport]
+    E -->|Registers| I2[UDS Transport]
+    E -->|Registers| I3[TCP Transport]
+    E -->|Registers| I4[UDP Transport]
+    E -->|Registers| I5[Dummy Transport]
+
+    %% Individual Transports and Servers
+    I1 -->|Implements| J1[QUIC Server]
+    I2 -->|Implements| J2[UDS Server]
+    I3 -->|Implements| J3[TCP Server]
+    I4 -->|Implements| J4[UDP Server]
+    I5 -->|Implements| J5[Dummy Server]
+
+    %% Handlers and Operations
+    subgraph Transport Handlers
+        J1 --> K[Read/Write Handlers]
+        J2 --> K
+        J3 --> K
+        J4 --> K
+        J5 --> K
     end
-    
-    F1 --> |Handle Write| G1[WriteHandler]
-    F1 --> |Handle Read| G2[ReadHandler]
-    
-    F2 --> |Handle Write| G1
-    F2 --> |Handle Read| G2
-    
-    F3 --> |Handle Write| G1
-    F3 --> |Handle Read| G2
-    
-    subgraph MDBX Database
-        G1 --> H1[Set Key-Value Pair]
-        G2 --> H2[Get Key-Value Pair]
+
+    K -->|Performs| L1[Handle Read]
+    K -->|Performs| L2[Handle Write]
+
+    %% Database Interaction
+    L1 --> M[Database Manager]
+    L2 --> M
+
+    M -->|Uses| N[MDBX Database]
+
+    %% Benchmarking Suite
+    subgraph Benchmarking
+        C2 --> O[Suite Manager]
+        O -->|Manages| P1[QUIC Suite]
+        O -->|Manages| P2[Dummy Suite]
+        O -->|Manages| P3[UDS Suite]
+        O -->|Manages| P4[TCP Suite]
+        O -->|Manages| P5[UDP Suite]
+
+        P1 -->|Runs| Q[Write/Read Benchmarks]
+        P2 -->|Runs| Q
+        P3 -->|Runs| Q
+        P4 -->|Runs| Q
+        P5 -->|Runs| Q
     end
-    
-    subgraph Connection Handling
-        D1 -->|Client Operations| I[Connection Handler]
-        I -->|Gnet/QUIC| J1[Process Incoming Stream/Frame]
-        I -->|Gnet/QUIC| J2[React to Incoming Data]
-    end
-    
-    I --> E1
-    I --> E2
-    I --> E3
+
+    %% Configuration and Logger
+    D --> R[Configuration]
+    D --> G
+    G --> S[Zap Logger]
+
+    %% Pprof Profiler
+    D --> H
+    H --> T[Pprof Server]
+
+    %% Database Manager Details
+    M --> U[DB Manager]
+    U --> V[Provides DB Access]
+
+    %% Legend
+    classDef component fill:#f9f,stroke:#333,stroke-width:2px;
+    class A,B,C1,C2,C3,D,E,F,G,H,M,N,O,P1,P2,P3,P4,P5,Q,R,S,T,U,V component;
 ```
 
 
