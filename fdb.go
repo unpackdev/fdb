@@ -7,6 +7,7 @@ import (
 	"github.com/unpackdev/fdb/config"
 	"github.com/unpackdev/fdb/db"
 	"github.com/unpackdev/fdb/logger"
+	"github.com/unpackdev/fdb/pprof"
 	"github.com/unpackdev/fdb/transports"
 	transport_dummy "github.com/unpackdev/fdb/transports/dummy"
 	transport_quic "github.com/unpackdev/fdb/transports/quic"
@@ -15,6 +16,7 @@ import (
 	transport_uds "github.com/unpackdev/fdb/transports/uds"
 	"github.com/unpackdev/fdb/types"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 type FDB struct {
@@ -108,10 +110,63 @@ func New(ctx context.Context, cnf config.Config) (*FDB, error) {
 }
 
 func (fdb *FDB) Start(ctx context.Context, transports ...types.TransportType) error {
-	return nil
+	g, gCtx := errgroup.WithContext(ctx)
+
+	bDb, err := fdb.GetDbManager().GetDb("fdb")
+	if err != nil {
+		return fmt.Errorf("failed to retrieve fdb database: %w", err)
+	}
+
+	pCfg, pcErr := fdb.config.GetPprofByServiceTag("fdb")
+	if pcErr != nil {
+		return errors.Wrapf(pcErr, "failed to retrieve fdb pprof config for service tag: %s", "fdb")
+	}
+
+	if pCfg.Enabled {
+		g.Go(func() error {
+			return pprof.New(ctx, *pCfg).Start()
+		})
+	}
+
+	for _, transport := range transports {
+		transportFn, tnOk := tRegistry[transport]
+		if !tnOk {
+			return fmt.Errorf("unknown transport type provided: %v - rejecting serving transports", transport)
+		}
+
+		iTransport, itErr := transportFn(fdb, bDb)
+		if itErr != nil {
+			return errors.Wrapf(itErr, "failure to create transport: %s", transport)
+		}
+
+		g.Go(func() error {
+			return iTransport.Start(gCtx)
+		})
+	}
+
+	if gErr := g.Wait(); gErr != nil {
+		return errors.Wrap(gErr, "failure to start fdb database")
+	}
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (fdb *FDB) Stop(transports ...types.TransportType) error {
+	for _, transport := range transports {
+		t, tErr := fdb.tm.GetTransport(transport)
+		if tErr != nil {
+			return tErr
+		}
+
+		if err := t.Stop(); err != nil {
+			return err
+		}
+	}
+
+	zap.L().Info("All transports successfully stopped")
 	return nil
 }
 

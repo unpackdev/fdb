@@ -64,7 +64,7 @@ func (us *UdpSuite) Start(ctx context.Context) error {
 	rHandler := transport_udp.NewUDPReadHandler(bDb)
 	udpServer.RegisterHandler(types.ReadHandlerType, rHandler.HandleMessage)
 
-	if sErr := udpServer.Start(); sErr != nil {
+	if sErr := udpServer.Start(ctx); sErr != nil {
 		zap.L().Error("failed to start UDP transport", zap.Error(sErr))
 	}
 

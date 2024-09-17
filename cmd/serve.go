@@ -21,8 +21,8 @@ func ServeCommand() *cli.Command {
 			},
 			&cli.StringSliceFlag{
 				Name:  "transports",
-				Usage: "Specify the transport types (e.g., quic, uds)",
-				Value: cli.NewStringSlice("quic", "uds"), // Corrected default initialization
+				Usage: "Specify the transport types",
+				Value: cli.NewStringSlice("quic", "uds", "tcp", "udp"),
 			},
 		},
 		Action: func(c *cli.Context) error {
@@ -47,6 +47,8 @@ func ServeCommand() *cli.Command {
 
 				transports = append(transports, tt)
 			}
+
+			defer fdbc.Stop(transports...)
 			return fdbc.Start(c.Context, transports...)
 		},
 	}

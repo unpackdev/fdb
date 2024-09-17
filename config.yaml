@@ -1,7 +1,7 @@
 logger:
   enabled: true
   environment: development
-  level: debug
+  level: info
 
 mdbx:
   enabled: true
@@ -13,6 +13,11 @@ mdbx:
       minSize: 1               # Minimum database size (1 GB)
       growthStep: 4096         # Growth step size (4 KB)
       filePermissions: 0600    # File permissions for the database
+
+pprof:
+  - name: fdb
+    enabled: true
+    addr: "127.0.0.1:4060"
 
 transports:
   - type: dummy

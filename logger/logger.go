@@ -8,7 +8,7 @@ import (
 
 // GetProductionLogger creates and returns a new zap.Logger configured for production use.
 // The production logger is optimized for performance. It uses a JSON encoder, logs to standard
-// error, and writes at InfoLevel and above.
+// error, and writes at InfoLevel and above as default.
 //
 // Returns:
 //
@@ -57,6 +57,6 @@ func GetLogger(env string, level string) (*zap.Logger, error) {
 	case "production":
 		return GetProductionLogger(configLevel)
 	default:
-		return nil, fmt.Errorf("failure to construct logger for env: %s", env)
+		return nil, fmt.Errorf("not supported environment requested env: %s", env)
 	}
 }

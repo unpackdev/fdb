@@ -2,10 +2,10 @@
 FROM golang:1.23-alpine AS builder
 
 # Install necessary build tools
-RUN apk add --no-cache make gcc musl-dev
+RUN apk add --no-cache make git gcc musl-dev
 
 # Set the working directory inside the container
-WORKDIR /app
+WORKDIR /fdb
 
 # Copy the Go modules manifest and download dependencies
 COPY go.mod go.sum ./
@@ -21,12 +21,19 @@ RUN make build
 FROM alpine:latest
 
 # Set the working directory inside the container
-WORKDIR /app
+WORKDIR /fdb
 
 # Copy the built executable from the builder stage
-COPY --from=builder /app/build/fdb /app/fdb
+COPY --from=builder /fdb/build/fdb /fdb/fdb
 
-# EXPOSE 0000
+# Copy the YAML configuration file
+COPY config.yaml /fdb/config.yaml
 
-# Command to run the server
-CMD ["./fdb", "serve"]
+# Copy the certificate files
+COPY data/certs/ /fdb/data/certs/
+
+# Expose the necessary ports from the config file
+EXPOSE 4434 4433 5011 5022 4060
+
+# Command to run the server with the configuration file
+CMD ["./fdb", "serve", "--config", "./config.yaml"]

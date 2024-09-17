@@ -50,7 +50,7 @@ func (s *Server) Addr() string {
 }
 
 // Start starts the UDS server using the provided configuration
-func (s *Server) Start() error {
+func (s *Server) Start(ctx context.Context) error {
 	s.stopChan = make(chan struct{})
 	s.started = make(chan struct{}) // Initialize the started channel
 	listenAddr := "unix://" + s.cnf.Addr()

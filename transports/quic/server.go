@@ -55,7 +55,7 @@ func (s *Server) Addr() string {
 }
 
 // Start starts the QUIC server
-func (s *Server) Start() error {
+func (s *Server) Start(ctx context.Context) error {
 	var err error
 	s.listener, err = quic.ListenAddr(s.cnf.Addr(), s.tlsConfig, nil)
 	if err != nil {

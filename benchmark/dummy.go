@@ -60,7 +60,7 @@ func (ds *DummySuite) Start(ctx context.Context) error {
 	rHandler := transport_dummy.NewDummyReadHandler(db)
 	dummyServer.RegisterHandler(types.ReadHandlerType, rHandler.HandleMessage)
 
-	if sErr := dummyServer.Start(); sErr != nil {
+	if sErr := dummyServer.Start(ctx); sErr != nil {
 		zap.L().Error(
 			"failed to start dummy transport",
 			zap.Error(sErr),

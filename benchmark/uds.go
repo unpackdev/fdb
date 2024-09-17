@@ -65,7 +65,7 @@ func (us *UdsSuite) Start(ctx context.Context) error {
 	rHandler := transport_uds.NewUDSReadHandler(bDb)
 	udsServer.RegisterHandler(types.ReadHandlerType, rHandler.HandleMessage)
 
-	if sErr := udsServer.Start(); sErr != nil {
+	if sErr := udsServer.Start(ctx); sErr != nil {
 		zap.L().Error("failed to start UDS transport", zap.Error(sErr))
 	}
 

@@ -64,7 +64,7 @@ func (ts *TcpSuite) Start(ctx context.Context) error {
 	rHandler := transport_tcp.NewTCPReadHandler(bDb)
 	tcpServer.RegisterHandler(types.ReadHandlerType, rHandler.HandleMessage)
 
-	if sErr := tcpServer.Start(); sErr != nil {
+	if sErr := tcpServer.Start(ctx); sErr != nil {
 		zap.L().Error("failed to start TCP transport", zap.Error(sErr))
 	}
 

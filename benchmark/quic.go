@@ -65,7 +65,7 @@ func (qs *QuicSuite) Start(ctx context.Context) error {
 	rHandler := transport_quic.NewQuicReadHandler(bDb)
 	quicServer.RegisterHandler(types.ReadHandlerType, rHandler.HandleMessage)
 
-	if err := quicServer.Start(); err != nil {
+	if err := quicServer.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start QUIC server: %w", err)
 	}
 
