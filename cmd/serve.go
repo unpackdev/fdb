@@ -16,7 +16,7 @@ func ServeCommand() *cli.Command {
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:  "config",
-				Usage: "Path where benchmark configuration can be found",
+				Usage: "Path where configuration can be found",
 				Value: "./config.yaml",
 			},
 			&cli.StringSliceFlag{
@@ -31,7 +31,7 @@ func ServeCommand() *cli.Command {
 			if err != nil {
 				return errors.Wrap(err, "failed to load configuration")
 			}
-
+			
 			// Initialize FDB
 			fdbc, err := fdb.New(c.Context, *cfg)
 			if err != nil {

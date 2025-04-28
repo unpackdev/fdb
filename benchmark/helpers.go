@@ -5,6 +5,7 @@ import (
 	"github.com/unpackdev/fdb/messages"
 	"github.com/unpackdev/fdb/types"
 	"math"
+	"strconv"
 	"time"
 )
 
@@ -16,6 +17,17 @@ func createWriteMessage() messages.Message {
 		Handler: types.WriteHandlerType,
 		Key:     key,
 		Data:    []byte("benchmark test data"),
+	}
+}
+
+// createWriteMessage generates a random write message
+func createWriteMessageWithID(id int64) messages.Message {
+	var key [32]byte
+	_, _ = rand.Read(key[:])
+	return messages.Message{
+		Handler: types.WriteHandlerType,
+		Key:     key,
+		Data:    []byte("benchmark test data" + strconv.FormatInt(id, 10)),
 	}
 }
 

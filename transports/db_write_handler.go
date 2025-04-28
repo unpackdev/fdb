@@ -1,7 +1,6 @@
-package transport_tcp
+package transports
 
 import (
-	"github.com/panjf2000/gnet/v2"
 	"github.com/unpackdev/fdb/db"
 	"log"
 )
@@ -20,12 +19,12 @@ func NewTCPWriteHandler(db db.Provider, batchWriter *db.BatchWriter) *TCPWriteHa
 	}
 }
 
-// HandleMessage processes the incoming message using the TCPWriteHandler
-func (wh *TCPWriteHandler) HandleMessage(c gnet.Conn, frame []byte) {
+// Handle processes the incoming message using the TCPWriteHandler
+func (wh *TCPWriteHandler) Handle(conn Connection, frame []byte) {
 	// Check if the message is at least 34 bytes (1 byte for action, 32 bytes for key, and at least 1 byte for value)
 	if len(frame) < 34 {
 		log.Printf("Invalid message length: %d, expected at least 34 bytes", len(frame))
-		c.AsyncWrite([]byte{0x01}, nil) // Error code
+		conn.Send([]byte{0x01}) // Error code
 		return
 	}
 
@@ -40,5 +39,5 @@ func (wh *TCPWriteHandler) HandleMessage(c gnet.Conn, frame []byte) {
 	wh.writer.BufferWrite(key, value)
 
 	// Send success response
-	c.AsyncWrite([]byte{0x00}, nil) // Success code
+	conn.Send([]byte{0x00}) // Success code
 }

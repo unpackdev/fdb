@@ -7,6 +7,8 @@ import (
 	"os"
 )
 
+var global *Config
+
 // Config represents the overall application configuration, which includes logging,
 // transports, MDBX nodes, and pprof profiling options. This struct aggregates
 // all major configuration sections for easy management and access throughout the application.
@@ -14,15 +16,27 @@ type Config struct {
 	// Logger holds the configuration for the logging system, including log level and environment.
 	Logger Logger `yaml:"logger"`
 
-	// Transports is a list of various transport configurations (e.g., Dummy, UDS, QUIC).
-	// Each transport has its own specific configuration settings.
-	Transports []Transport `yaml:"transports"`
+	// Pprof is a list of pprof profiling configurations, each tied to a specific service or subsystem.
+	Pprof []Pprof `yaml:"pprof"`
+
+	// Observability holds all configurations related to metrics, tracing, and logging.
+	Observability Observability `yaml:"observability"`
 
 	// Mdbx contains the configuration for MDBX database nodes, including paths, sizes, and permissions.
 	Mdbx Mdbx `yaml:"mdbx"`
 
-	// Pprof is a list of pprof profiling configurations, each tied to a specific service or subsystem.
-	Pprof []Pprof `yaml:"pprof"`
+	// Transports is a list of various transport configurations (e.g., Dummy, UDS, QUIC).
+	// Each transport has its own specific configuration settings.
+	Transports []Transport `yaml:"transports"`
+
+	// Networking holds the configuration for the P2P networking.
+	Networking Networking `yaml:"networking"`
+
+	// Identity holds the configuration for the identity of the node.
+	Identity Identity `yaml:"identity"`
+
+	// Rpc holds the configuration for the RPC protocol.
+	Rpc Rpc `yaml:"rpc"`
 }
 
 // Validate checks the integrity of the loaded configuration.
@@ -107,4 +121,17 @@ func LoadConfig(filename string) (*Config, error) {
 	}
 
 	return &rawConfig, nil
+}
+
+func G() *Config {
+	return global
+}
+
+func InitializeGlobalConfig(filename string) (*Config, error) {
+	rawConfig, err := LoadConfig(filename)
+	if err != nil {
+		return nil, err
+	}
+	global = rawConfig
+	return rawConfig, nil
 }

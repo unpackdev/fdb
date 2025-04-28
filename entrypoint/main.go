@@ -16,6 +16,7 @@ func main() {
 			cmd.BenchmarkCommand(), // Command for running benchmarks
 			cmd.EbpfCommands(),     // Command for running eBPF specific workload
 			cmd.ServeCommand(),     // Command to start the server
+			cmd.KeystoreCommand(),  // Command for handling keystore (Peer IDs)
 		},
 	}
 

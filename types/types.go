@@ -4,6 +4,10 @@ import "fmt"
 
 type TransportType int
 
+func (t TransportType) Uint32() uint32 {
+	return uint32(t)
+}
+
 // String representation of TransportType
 func (t TransportType) String() string {
 	switch t {
@@ -19,6 +23,24 @@ func (t TransportType) String() string {
 		return "dummy"
 	default:
 		return "unknown"
+	}
+}
+
+// TransportTypeFromUint32 converts a uint32 to a TransportType.
+func TransportTypeFromUint32(u uint32) TransportType {
+	switch u {
+	case 0:
+		return UDPTransportType
+	case 1:
+		return DummyTransportType
+	case 2:
+		return QUICTransportType
+	case 3:
+		return UDSTransportType
+	case 4:
+		return TCPTransportType
+	default:
+		return -1 // Represents an unknown TransportType
 	}
 }
 
@@ -76,6 +98,10 @@ const (
 
 // HandlerType represents different types of handlers
 type HandlerType byte
+
+func (h HandlerType) String() string {
+	return string(h)
+}
 
 // FromByte converts a byte into a HandlerType
 func (h *HandlerType) FromByte(b byte) error {

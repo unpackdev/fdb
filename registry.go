@@ -52,11 +52,11 @@ var tRegistry = map[types.TransportType]func(fdb *FDB, dbP db.Provider) (transpo
 		// Create a new BatchWriter with a batch size of 512 and flush interval of 1 second
 		batchWriter := db.NewBatchWriter(dbP.(*db.Db), 512, 500*time.Millisecond, 15)
 
-		wHandler := transport_tcp.NewTCPWriteHandler(dbP, batchWriter)
-		tcpServer.RegisterHandler(types.WriteHandlerType, wHandler.HandleMessage)
+		wHandler := transports.NewTCPWriteHandler(dbP, batchWriter)
+		tcpServer.RegisterHandler(types.WriteHandlerType, wHandler)
 
-		rHandler := transport_tcp.NewTCPReadHandler(dbP)
-		tcpServer.RegisterHandler(types.ReadHandlerType, rHandler.HandleMessage)
+		rHandler := transports.NewTCPReadHandler(dbP)
+		tcpServer.RegisterHandler(types.ReadHandlerType, rHandler)
 
 		return tcpTransport, nil
 	},
