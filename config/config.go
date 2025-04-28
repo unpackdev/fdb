@@ -14,15 +14,24 @@ type Config struct {
 	// Logger holds the configuration for the logging system, including log level and environment.
 	Logger Logger `yaml:"logger"`
 
-	// Transports is a list of various transport configurations (e.g., Dummy, UDS, QUIC).
-	// Each transport has its own specific configuration settings.
-	Transports []Transport `yaml:"transports"`
+	// Pprof is a list of pprof profiling configurations, each tied to a specific service or subsystem.
+	Pprof []Pprof `yaml:"pprof"`
+
+	// Observability holds all configurations related to metrics, tracing, and logging.
+	Observability Observability `yaml:"observability"`
 
 	// Mdbx contains the configuration for MDBX database nodes, including paths, sizes, and permissions.
 	Mdbx Mdbx `yaml:"mdbx"`
 
-	// Pprof is a list of pprof profiling configurations, each tied to a specific service or subsystem.
-	Pprof []Pprof `yaml:"pprof"`
+	// Transports is a list of various transport configurations (e.g., Dummy, UDS, QUIC).
+	// Each transport has its own specific configuration settings.
+	Transports []Transport `yaml:"transports"`
+
+	// Networking holds the configuration for the P2P networking.
+	Networking Networking `yaml:"networking"`
+
+	// Rpc holds the configuration for the RPC protocol.
+	Rpc Rpc `yaml:"rpc"`
 }
 
 // Validate checks the integrity of the loaded configuration.

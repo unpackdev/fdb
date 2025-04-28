@@ -1,211 +1,419 @@
-package transport_tcp
+// pkg/transports/tcp/server.go
+package tcp
 
 import (
 	"context"
+	"encoding/binary"
+	"github.com/unpackdev/fdb/transports"
+
+	"github.com/sasha-s/go-deadlock"
+	"github.com/unpackdev/fdb/config"
+	"github.com/unpackdev/fdb/logger"
+	"github.com/unpackdev/fdb/observability"
+	"github.com/unpackdev/fdb/types"
 	"io"
+	"net"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/panjf2000/gnet/v2"
 	"github.com/pkg/errors"
-	"github.com/unpackdev/fdb/config"
-	"github.com/unpackdev/fdb/types"
 	"go.uber.org/zap"
 )
 
-// TCPHandler function type for TCP handlers
-type TCPHandler func(c gnet.Conn, frame []byte)
+type OnTrafficHandlerFn func(ctx *ConnectionContext, c gnet.Conn) (action gnet.Action)
+type OnCloseHandlerFn func(ctx *ConnectionContext, c gnet.Conn)
 
-// Server struct represents the TCP server using gnet
+// Server represents the TCP server.
 type Server struct {
-	ctx             context.Context
-	handlerRegistry map[types.HandlerType]TCPHandler
-	cnf             config.TcpTransport
-	stopChan        chan struct{}
-	started         chan struct{}
-	eng             gnet.Engine
+	ctx              context.Context
+	handlerRegistry  map[types.ProtocolType]transports.Handler
+	cnf              config.TcpTransport
+	stopChan         chan struct{}
+	started          chan struct{}
+	startedOnce      sync.Once // Ensures the channel is closed only once
+	stopOnce         sync.Once // Ensures Stop is called only once
+	eng              gnet.Engine
+	mu               deadlock.RWMutex
+	stateManager     *StateManager // Added StateManager
+	onTrafficHandler OnTrafficHandlerFn
+	onCloseHandler   OnCloseHandlerFn
+	logger           logger.Logger
+	observability    *observability.Observability
+
+	wg sync.WaitGroup // WaitGroup to synchronize server shutdown
 }
 
-// NewServer creates a new TCP Server instance using the provided configuration
-func NewServer(ctx context.Context, cnf config.TcpTransport) (*Server, error) {
+// NewServer creates a new Server instance with the provided configuration.
+func NewServer(ctx context.Context, cnf config.TcpTransport, logger logger.Logger, obs *observability.Observability) (*Server, error) {
 	server := &Server{
 		ctx:             ctx,
-		handlerRegistry: make(map[types.HandlerType]TCPHandler),
+		handlerRegistry: make(map[types.ProtocolType]transports.Handler),
 		cnf:             cnf,
 		stopChan:        make(chan struct{}),
-		started:         make(chan struct{}),
+		started:         make(chan struct{}), // Buffered to prevent blocking
+		logger:          logger,
+		observability:   obs,
 	}
+
+	// Initialize StateManager
+	server.stateManager = NewStateManager(logger, obs)
+	server.stateManager.SetState(ServerStateType, Uninitialized)
 
 	return server, nil
 }
 
-// Addr returns the TCP address as a string
+func (s *Server) SetOnTrafficHandler(handler OnTrafficHandlerFn) {
+	s.onTrafficHandler = handler
+}
+
+func (s *Server) SetOnCloseHandler(handler OnCloseHandlerFn) {
+	s.onCloseHandler = handler
+}
+
+// Addr returns the TCP address as a string.
 func (s *Server) Addr() string {
 	return s.cnf.Addr()
 }
 
-// Start starts the TCP server using the provided configuration
+// Start initiates the TCP server with retry mechanism.
 func (s *Server) Start(ctx context.Context) error {
-	s.stopChan = make(chan struct{})
-	s.started = make(chan struct{}) // Initialize the started channel
-	listenAddr := "tcp://" + s.cnf.Addr()
-	zap.L().Info("Starting TCP Server", zap.String("addr", listenAddr))
+	// Update state to Initializing
+	s.stateManager.SetState(ServerStateType, Initializing)
 
-	// Create an error channel to capture errors from the goroutine
+	listenAddr := "tcp://" + s.cnf.Addr()
+	s.logger.Info("Starting TCP Server", zap.String("addr", listenAddr))
+
+	// Channel to capture errors from the goroutine
 	errChan := make(chan error, 1)
 
-	// Start the server asynchronously
-	go func() {
-		err := gnet.Run(
-			s, listenAddr,
-			gnet.WithMulticore(true),
-			gnet.WithReusePort(true),
-			gnet.WithSocketRecvBuffer(1024*64),
-			gnet.WithLockOSThread(true),
-			gnet.WithTicker(true),
-			gnet.WithTCPNoDelay(gnet.TCPNoDelay),
-		)
-		if err != nil {
-			errChan <- err
-			return
-		}
-		close(errChan) // No error, close the channel
-	}()
-
-	// Wait until OnBoot sends a signal or an error occurs
-	select {
-	case <-s.started:
-		close(s.started)
-		zap.L().Info("TCP Server successfully started", zap.String("addr", listenAddr))
-		return nil
-	case err := <-errChan:
-		if err != nil {
-			return errors.Wrap(err, "failed to start TCP server")
-		}
-		return nil
-	case <-time.After(2 * time.Second): // Wait for up to 2 seconds
-		return errors.New("TCP server did not start in time")
+	// Prepare gnet options
+	options := []gnet.Option{
+		gnet.WithMulticore(true),
+		gnet.WithSocketRecvBuffer(1024 * 64),
+		gnet.WithLockOSThread(true),
+		gnet.WithTicker(true),
+		//gnet.WithTCPNoDelay(1),
+		gnet.WithTicker(true),
+		// Standard TCP behaviour allows TIME_WAIT when stopping the service period...
+		// This can be up to a few minutes. If we stop the server and attempt to start it again
+		// without this line, it will fail to start the server. This option allows to forcibly bind
+		// to a port in use in the TIME_WAIT state, bypassing the wait time...
+		gnet.WithReuseAddr(true),
 	}
+
+	// If TLS is configured, add the TLS config
+	tlsConfig, err := s.cnf.GetTLSConfig()
+	if err != nil {
+		s.stateManager.SetState(ServerStateType, Failed)
+		return errors.Wrap(err, "failed to get TLS config")
+	}
+	_ = tlsConfig
+	/*
+	   if tlsConfig != nil {
+	       options = append(options, gnet.WithTLSConfig(&tls.Config{
+	           InsecureSkipVerify: tlsConfig.Insecure,
+	           Certificates:       tlsConfig.Certificates,
+	           RootCAs:            tlsConfig.RootCAs,
+	       }))
+	       s.logger.Info("TLS is enabled for TCP Server")
+	   }
+	*/
+
+	// Attempt to start the server with retries
+	maxRetries := 3
+	retryInterval := 1 * time.Second
+
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		s.logger.Info("Attempting to start TCP Server", zap.Int("attempt", attempt))
+
+		// Increment WaitGroup before starting the server goroutine
+		s.wg.Add(1)
+		// Start the server asynchronously
+		go func() {
+			defer s.wg.Done() // Decrement WaitGroup when goroutine exits
+
+			// Update state to Starting
+			s.stateManager.SetState(ServerStateType, Starting)
+
+			err := gnet.Run(
+				s,
+				listenAddr,
+				options...,
+			)
+			if err != nil {
+				errChan <- err
+				return
+			}
+			close(errChan) // No error, close the channel
+		}()
+
+		// Wait until OnBoot signals or an error occurs
+		select {
+		case <-s.started:
+			s.logger.Info("TCP Server successfully started", zap.String("addr", listenAddr))
+			// Update state to Started
+			s.stateManager.SetState(ServerStateType, Started)
+			return nil
+		case err := <-errChan:
+			if err != nil {
+				s.stateManager.SetState(ServerStateType, Failed)
+				s.logger.Error("Failed to start TCP Server", zap.Error(err))
+				// If max retries not reached, wait and retry
+				if attempt < maxRetries {
+					s.logger.Info("Retrying to start TCP Server", zap.Int("attempt", attempt+1))
+					time.Sleep(retryInterval)
+					continue
+				}
+				return errors.Wrap(err, "failed to start TCP server after retries")
+			}
+			return nil
+		case <-time.After(5 * time.Second): // Increased timeout to 5 seconds
+			s.stateManager.SetState(ServerStateType, Failed)
+			s.logger.Error("TCP server did not start in time", zap.String("addr", listenAddr))
+			// If max retries not reached, wait and retry
+			if attempt < maxRetries {
+				s.logger.Info("Retrying to start TCP Server", zap.Int("attempt", attempt+1))
+				time.Sleep(retryInterval)
+				continue
+			}
+			return errors.New("TCP server did not start in time after retries")
+		}
+	}
+
+	return errors.New("TCP server failed to start")
 }
 
-// OnBoot is called when the server starts
+// OnBoot is called when the server starts.
 func (s *Server) OnBoot(eng gnet.Engine) (action gnet.Action) {
 	s.eng = eng // Store the engine
 
-	zap.L().Info("TCP Server is listening", zap.String("addr", s.cnf.Addr()))
+	s.logger.Info("TCP Server is listening", zap.String("addr", s.cnf.Addr()))
 
-	s.started <- struct{}{} // Signal that the server has started
+	// Signal that the server has started by closing the channel
+	s.startedOnce.Do(func() {
+		close(s.started)
+	})
+
 	return gnet.None
 }
 
-// OnShutdown is called when the server is shutting down
+// OnShutdown is called when the server is shutting down.
 func (s *Server) OnShutdown(eng gnet.Engine) {
-	zap.L().Info("TCP Server is shutting down", zap.String("addr", s.cnf.Addr()))
+	s.logger.Info("TCP Server is shutting down", zap.String("addr", s.cnf.Addr()))
+	// Update state to Stopping
+	s.stateManager.SetState(ServerStateType, Stopping)
+	// Further shutdown logic if necessary
 }
 
-// OnOpen is called when a new connection is opened
+// OnOpen is called when a new connection is opened.
 func (s *Server) OnOpen(c gnet.Conn) (out []byte, action gnet.Action) {
+	s.logger.Debug("Connection opened", zap.String("remote_addr", c.RemoteAddr().String()))
+
+	// Initialize connection context with a cancellable context
+	ctx, cancel := context.WithCancel(s.ctx)
+	connCtx := &ConnectionContext{
+		Buffer: make([]byte, 0),
+		Conn:   NewTCPConnection(c),
+		Ctx:    ctx,
+		Cancel: cancel,
+	}
+	c.SetContext(connCtx)
+
 	return nil, gnet.None
 }
 
-// OnClose is called when a connection is closed
+// OnClose is called when a connection is closed.
 func (s *Server) OnClose(c gnet.Conn, err error) (action gnet.Action) {
-	if err != nil && !errors.Is(err, io.EOF) {
-		zap.L().Error(
-			"Connection closed",
-			zap.Error(err),
-			zap.String("addr", c.RemoteAddr().String()),
-		)
+	if err != nil {
+		if errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) ||
+			strings.Contains(err.Error(), "closed") ||
+			strings.Contains(err.Error(), "connection reset by peer") {
+			s.logger.Debug("Connection closed by client", zap.String("addr", c.RemoteAddr().String()))
+		} else {
+			s.logger.Error(
+				"Connection closed with error",
+				zap.Error(err),
+				zap.String("addr", c.RemoteAddr().String()),
+			)
+		}
+	} else {
+		s.logger.Info("Connection closed", zap.String("addr", c.RemoteAddr().String()))
 	}
+
+	// Retrieve the connection context
+	ctx, ok := c.Context().(*ConnectionContext)
+	if ok && s.onCloseHandler != nil {
+		s.onCloseHandler(ctx, c)
+	}
+
+	// Cancel the connection's context
+	if ctx != nil {
+		ctx.Cancel()
+	}
+
 	return gnet.None
 }
 
-// OnTraffic handles incoming data
+// OnTraffic handles incoming data.
 func (s *Server) OnTraffic(c gnet.Conn) (action gnet.Action) {
-	// Read all available data from the connection buffer
-	frame, err := c.Next(-1)
-	if err != nil {
-		zap.L().Error("Error reading data", zap.Error(err))
+	// Retrieve the connection context
+	ctx, ok := c.Context().(*ConnectionContext)
+	if !ok {
+		s.logger.Error("Failed to retrieve connection context")
 		return gnet.Close
 	}
 
-	if len(frame) < 1 {
-		zap.L().Warn("Invalid action received", zap.String("addr", c.RemoteAddr().String()))
-		c.AsyncWrite([]byte("ERROR: Invalid action"), nil)
-		return gnet.None
+	// In case that on traffic handler is set, bypass the entire packet handling bellow.
+	// Bellow custom packet is expected (Protocol+PacketLength+Data) where this WILL NOT
+	// be the case with HTTP, WebSocket, etc...
+	if s.onTrafficHandler != nil {
+		return s.onTrafficHandler(ctx, c)
 	}
 
-	// Parse the action type
-	actionType, err := s.parseActionType(frame)
+	// Read available data
+	data, err := c.Next(-1)
 	if err != nil {
-		c.AsyncWrite([]byte("ERROR: Invalid action"), nil)
+		if err != io.EOF {
+			s.logger.Error("Error reading data", zap.Error(err))
+			return gnet.Close
+		}
 		return gnet.None
 	}
 
-	// Check if the handler exists
-	handler, exists := s.handlerRegistry[actionType]
-	if !exists {
-		zap.L().Warn("Unknown action type", zap.Int("action_type", int(actionType)), zap.String("addr", c.RemoteAddr().String()))
-		c.AsyncWrite([]byte("ERROR: Unknown action"), nil)
-		return gnet.None
+	// Append new data to the buffer
+	ctx.Buffer = append(ctx.Buffer, data...)
+
+	// Process all complete messages
+	for {
+		if len(ctx.Buffer) < 4 {
+			// Not enough data for length prefix
+			break
+		}
+
+		// Read the length prefix
+		length := binary.BigEndian.Uint32(ctx.Buffer[:4])
+		if len(ctx.Buffer) < int(4+length) {
+			// Not enough data for the complete message
+			break
+		}
+
+		// Extract the message
+		message := ctx.Buffer[4 : 4+length]
+
+		// Update the buffer
+		ctx.Buffer = ctx.Buffer[4+length:]
+
+		// Validate the message
+		if len(message) < 1 {
+			s.logger.Warn("Invalid protocol type received", zap.String("addr", c.RemoteAddr().String()))
+			continue
+		}
+
+		// Parse the ProtocolType (first byte)
+		protocolType := types.ProtocolType(message[0])
+
+		// Retrieve the handler
+		s.mu.RLock()
+		handler, exists := s.handlerRegistry[protocolType]
+		s.mu.RUnlock()
+		if !exists {
+			s.logger.Warn("Unknown protocol handler", zap.String("protocol_type", protocolType.String()))
+			continue
+		}
+
+		// Extract the frame (excluding the ProtocolType byte)
+		frame := message[1:]
+
+		// Dispatch to the handler
+		handler.Handle(ctx.Conn, frame)
 	}
 
-	// Call the handler
-	handler(c, frame)
 	return gnet.None
 }
 
-// OnTick is called periodically by gnet
+// OnTick is called periodically by gnet.
 func (s *Server) OnTick() (delay time.Duration, action gnet.Action) {
 	select {
 	case <-s.stopChan:
+		// Update state to Stopped
+		s.stateManager.SetState(ServerStateType, Stopped)
 		return 0, gnet.Shutdown
 	default:
 		return time.Second, gnet.None
 	}
 }
 
-// Stop stops the TCP server
+// Stop gracefully stops the TCP server with retries.
 func (s *Server) Stop() error {
-	zap.L().Info("Stopping TCP Server", zap.String("addr", s.cnf.Addr()))
+	var stopErr error
 
-	err := s.eng.Stop(s.ctx)
-	if err != nil {
-		zap.L().Error("Error stopping TCP server", zap.Error(err))
-		return err
-	}
+	s.stopOnce.Do(func() {
+		s.logger.Info("Stopping TCP Server", zap.String("addr", s.cnf.Addr()))
+		s.stateManager.SetState(ServerStateType, Stopping)
 
-	zap.L().Info("TCP Server stopped successfully", zap.String("addr", s.cnf.Addr()))
-	return nil
+		maxRetries := 3
+		retryInterval := 500 * time.Millisecond
+
+		for attempt := 1; attempt <= maxRetries; attempt++ {
+			// Create a new context for stopping the server
+			stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			err := s.eng.Stop(stopCtx)
+			if err != nil {
+				s.logger.Error("Error stopping TCP server", zap.Error(err))
+				// If max retries not reached, wait and retry
+				if attempt < maxRetries {
+					s.logger.Info("Retrying to stop TCP Server", zap.Int("attempt", attempt+1))
+					time.Sleep(retryInterval)
+					continue
+				}
+				// Update state to Failed if stopping fails
+				s.stateManager.SetState(ServerStateType, Failed)
+				stopErr = err
+				break
+			}
+
+			// Wait for the server goroutine to finish
+			s.wg.Wait()
+
+			// Close the stop channel to indicate the server is stopping
+			select {
+			case <-s.stopChan:
+				// Already closed
+			default:
+				close(s.stopChan)
+			}
+
+			s.logger.Info("TCP Server stopped successfully", zap.String("addr", s.cnf.Addr()))
+			// Update state to Stopped
+			s.stateManager.SetState(ServerStateType, Stopped)
+			return
+		}
+	})
+
+	return stopErr
 }
 
-// WaitStarted returns the started channel for waiting until the server starts
+// WaitStarted returns a channel that is closed when the server starts.
 func (s *Server) WaitStarted() <-chan struct{} {
 	return s.started
 }
 
-// parseActionType parses the action type from the frame
-func (s *Server) parseActionType(frame []byte) (types.HandlerType, error) {
-	if len(frame) < 1 {
-		return 0, errors.New("invalid action: frame too short")
-	}
-
-	var actionType types.HandlerType
-	err := actionType.FromByte(frame[0])
-	if err != nil {
-		return 0, err
-	}
-
-	return actionType, nil
+// RegisterHandler registers a handler for a specific protocol type.
+func (s *Server) RegisterHandler(protocolType types.ProtocolType, handler transports.Handler) {
+	s.logger.Debug("Registering handler", zap.String("protocol_type", protocolType.String()))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.handlerRegistry[protocolType] = handler
 }
 
-// RegisterHandler registers a handler for a specific action
-func (s *Server) RegisterHandler(actionType types.HandlerType, handler TCPHandler) {
-	zap.L().Debug("Registering handler", zap.Int("action_type", int(actionType)))
-	s.handlerRegistry[actionType] = handler
-}
-
-// DeregisterHandler deregisters a handler for a specific action
-func (s *Server) DeregisterHandler(actionType types.HandlerType) {
-	zap.L().Debug("Deregistering handler", zap.Int("action_type", int(actionType)))
-	delete(s.handlerRegistry, actionType)
+// DeregisterHandler removes a handler for a specific protocol type.
+func (s *Server) DeregisterHandler(protocolType types.ProtocolType) {
+	s.logger.Debug("Deregistering handler", zap.String("protocol_type", protocolType.String()))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.handlerRegistry, protocolType)
 }

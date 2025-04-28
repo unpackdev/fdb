@@ -3,13 +3,14 @@ package transports
 import (
 	"errors"
 	"github.com/unpackdev/fdb/types"
-	"sync"
+
+	"github.com/sasha-s/go-deadlock"
 )
 
 // Manager is responsible for managing different transport servers
 type Manager struct {
 	transports map[types.TransportType]Transport // Holds references to different transports
-	mu         sync.Mutex
+	mu         deadlock.Mutex
 }
 
 func NewManager() *Manager {
