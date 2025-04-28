@@ -6,7 +6,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/peerdns/peerd/pkg/types"
+	"github.com/unpackdev/fdb/types"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 )

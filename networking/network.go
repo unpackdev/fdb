@@ -7,9 +7,9 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/libp2p/go-libp2p/p2p/discovery/mdns"
+
 	"github.com/unpackdev/fdb/accounts"
 
-	"github.com/peerdns/peerd/pkg/privacy"
 	"github.com/pkg/errors"
 	"github.com/sasha-s/go-deadlock"
 	"github.com/unpackdev/fdb/config"
@@ -47,7 +47,6 @@ type Network struct {
 	cfg             config.Networking // Store the configuration in the P2PNetwork struct
 	mu              deadlock.RWMutex
 	Logger          logger.Logger
-	PrivacyManager  *privacy.PrivacyManager
 	mdns            mdns.Service
 	mdnsNotifier    *MdnsNotifier
 	Metrics         *P2PMetrics

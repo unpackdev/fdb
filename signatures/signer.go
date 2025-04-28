@@ -39,27 +39,11 @@ func GetSignerByType(sType types.SignerType, publicKeyBytes []byte) (share.Signe
 
 // Initialization to register all existing signers.
 func init() {
-	RegisterSigner(types.BlsSignerType, func(publicKeyBytes []byte) (share.Signer, error) {
-		signer := &BLSSigner{}
-		if err := signer.DeserializePublic(publicKeyBytes); err != nil {
-			return nil, fmt.Errorf("failed to deserialize BLS public key: %w", err)
-		}
-		return signer, nil
-	})
 
 	RegisterSigner(types.Ed25519SignerType, func(publicKeyBytes []byte) (share.Signer, error) {
 		signer := &Ed25519Signer{}
 		if err := signer.DeserializePublic(publicKeyBytes); err != nil {
 			return nil, fmt.Errorf("failed to deserialize Ed25519 public key: %w", err)
-		}
-		return signer, nil
-	})
-
-	// Register SchnorrSignerType
-	RegisterSigner(types.SchnorrSignerType, func(publicKeyBytes []byte) (share.Signer, error) {
-		signer := &SchnorrSigner{}
-		if err := signer.DeserializePublic(publicKeyBytes); err != nil {
-			return nil, fmt.Errorf("failed to deserialize Schnorr public key: %w", err)
 		}
 		return signer, nil
 	})

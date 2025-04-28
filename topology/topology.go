@@ -141,10 +141,10 @@ func (t *Topology) HandleActorPacket(ctx context.Context, msg *packets.NetworkPa
 	}
 
 	// Process the ActorPacket via the Actors, passing the context
-	if err := t.actors.ProcessActorPacket(ctx, sender, ap); err != nil {
-		t.logger.Error("Failed to process ActorPacket", "peer_id", sender.String(), "error", err.Error())
-		return errors.Wrapf(err, "failed to process ActorPacket from peer %s", sender.String())
-	}
+	//if err := t.actors.ProcessActorPacket(ctx, sender, ap); err != nil {
+	//	t.logger.Error("Failed to process ActorPacket", "peer_id", sender.String(), "error", err.Error())
+	//	return errors.Wrapf(err, "failed to process ActorPacket from peer %s", sender.String())
+	//}
 
 	t.logger.Info("Processed ActorPacket", "peer_id", sender.String(), "status", ap.Status)
 	return nil

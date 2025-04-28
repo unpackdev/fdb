@@ -35,10 +35,6 @@ type Store struct {
 
 // NewStore initializes a new Store with the identity configuration.
 func NewStore(cfg config.Identity, logger logger.Logger, rbacMgr *rbac.Manager) (*Store, error) {
-	if err := signatures.InitBLS(); err != nil {
-		return nil, errors.Wrap(err, "failed to initialize BLS library")
-	}
-
 	store := &Store{
 		cfg:       cfg,
 		logger:    logger,
@@ -119,15 +115,11 @@ func (s *Store) Load() error {
 
 			var signer share.Signer
 			switch signerType {
-			case types.BlsSignerType:
-				signer, err = signatures.NewBLSSignerWithKeys(privateKeyBytes, publicKeyBytes)
 			case types.Ed25519SignerType:
 				signer, err = signatures.NewEd25519SignerWithKeys(privateKeyBytes, publicKeyBytes)
 				if err != nil {
 					return errors.Wrapf(err, "failed to initialize Ed25519 signer from file %s", file)
 				}
-			case types.SchnorrSignerType:
-				signer, err = signatures.NewSchnorrSignerWithKeys(privateKeyBytes, publicKeyBytes)
 			case types.Secp256k1SignerType:
 				signer, err = signatures.NewSecp256k1SignerWithKeys(privateKeyBytes, publicKeyBytes)
 			default:
@@ -138,59 +130,6 @@ func (s *Store) Load() error {
 			}
 			signers[signerType] = signer
 		}
-
-		// Reconstruct ThresholdBLSSigner if present
-		/*		var thresholdSigner *signatures.ThresholdBLSSigner
-				suite := bn256.NewSuite()
-				if key.ThresholdSigner != nil {
-					tsKey := key.ThresholdSigner
-					priShares := make([]*kshare.PriShare, 0, len(tsKey.Shares))
-					var secShare *kshare.PriShare // This will be our secret key
-					for idx, shareHex := range tsKey.Shares {
-						shareBytes, err := hex.DecodeString(shareHex)
-						if err != nil {
-							return errors.Wrapf(err, "failed to decode share for Threshold BLS signer from file %s", file)
-						}
-						priShare, err := signatures.DeserializePriShare(suite, shareBytes)
-						if err != nil {
-							return errors.Wrapf(err, "failed to deserialize PriShare from bytes")
-						}
-						priShare.I = idx
-						priShares = append(priShares, priShare)
-
-						// Assuming we only hold one share (our own), set it as the secret key
-						// TODO: multiple shares, need logic to identify the correct share
-						secShare = priShare
-					}
-
-					if secShare == nil {
-						return errors.New("secret share could not be decoded while loading threshold signer account")
-					}
-
-					commitmentsBytes, err := hex.DecodeString(tsKey.Commitments)
-					if err != nil {
-						return errors.Wrap(err, "failed to decode commitments")
-					}
-
-					commitments, err := signatures.UnmarshalPubPoly(suite, commitmentsBytes)
-					if err != nil {
-						return errors.Wrap(err, "failed to deserialize commitments")
-					}
-
-					// Reconstruct the MasterPublicKey from the commitments
-					masterPublicKey := commitments.Eval(0).V
-
-					tkp := &signatures.ThresholdKeyPair{
-						MasterPublicKey:  masterPublicKey,
-						MasterPrivateKey: secShare.V,
-						Shares:           priShares,
-						Commitments:      commitments,
-						N:                len(priShares),
-						T:                tsKey.Threshold,
-					}
-					thresholdSigner, err = signatures.NewThresholdBLSSigner(peerID.String(), nil, tkp.T)
-				}
-				_ = thresholdSigner*/
 
 		// Reconstruct Roles and ExtraPermissions
 		roles := make([]types.Role, 0)
@@ -218,7 +157,7 @@ func (s *Store) Load() error {
 		}
 
 		// Construct the Account object from the loaded data
-		account, err := NewAccount(s.logger, peerID, privKey, pubKey, types.Ed25519SignerType, signers, nil, key.Name, key.Comment, roles, key.RBAC.ExtraPermissions, s.rbacMgr)
+		account, err := NewAccount(s.logger, peerID, privKey, pubKey, types.Ed25519SignerType, key.Name, key.Comment, roles, key.RBAC.ExtraPermissions, s.rbacMgr)
 		if err != nil {
 			return errors.Wrap(err, "failed to initialize account")
 		}
@@ -278,26 +217,12 @@ func (s *Store) Create(name, comment string, signer types.SignerType, persist bo
 	// Initialize Signers map
 	signers := make(map[types.SignerType]share.Signer)
 
-	// Generate BLS signer
-	blsSigner, err := signatures.NewBLSSigner()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create BLS signer")
-	}
-	signers[types.BlsSignerType] = blsSigner
-
 	// Generate Ed25519 signer
 	ed25519Signer, err := signatures.NewEd25519Signer()
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create Ed25519 signer")
 	}
 	signers[types.Ed25519SignerType] = ed25519Signer
-
-	// Generate Schnorr signer
-	schnorrSigner, err := signatures.NewSchnorrSigner()
-	if err != nil {
-		return nil, errors.Wrap(err, "failed to create Schnorr signer")
-	}
-	signers[types.SchnorrSignerType] = schnorrSigner
 
 	// Generate Secp256k1 signer
 	secp256k1Signer, err := signatures.NewSecp256k1Signer()
@@ -306,18 +231,8 @@ func (s *Store) Create(name, comment string, signer types.SignerType, persist bo
 	}
 	signers[types.Secp256k1SignerType] = secp256k1Signer
 
-	/*	// Create a new ThresholdBLSSigner
-		tkp := &signatures.ThresholdKeyPair{}
-		nValidators := 1 // Set to the actual number of validators
-		threshold := 1   // Set to the desired threshold (must be ≤ nValidators)
-		if err := tkp.GenerateThresholdKey(nValidators, threshold); err != nil {
-			return nil, errors.Wrap(err, "failed to generate Threshold BLS key pair")
-		}
-
-		thresholdSigner, err := signatures.NewThresholdBLSSigner(peerID.String(), nil, threshold)*/
-
 	// Create a new Account with the derived peer ID and keys
-	account, aErr := NewAccount(s.logger, peerID, peerPrivKey, peerPubKey, types.Ed25519SignerType, signers, nil, name, comment, roles, nil, s.rbacMgr)
+	account, aErr := NewAccount(s.logger, peerID, peerPrivKey, peerPubKey, types.Ed25519SignerType, name, comment, roles, nil, s.rbacMgr)
 	if aErr != nil {
 		return nil, errors.Wrap(aErr, "failed to create account")
 	}
@@ -387,52 +302,6 @@ func (s *Store) Save(account *Account) error {
 		return errors.Wrap(err, "failed to marshal master public key")
 	}
 
-	// Serialize the signers
-	signers := make(map[types.SignerType]config.SignerKey)
-
-	for signerType, signer := range account.signers {
-		privateKeyBytes, err := signer.Pair().SerializePrivate()
-		if err != nil {
-			return errors.Wrapf(err, "failed to serialize private key for signer type %s", signerType)
-		}
-		publicKeyBytes, err := signer.Pair().SerializePublic()
-		if err != nil {
-			return errors.Wrapf(err, "failed to serialize public key for signer type %s", signerType)
-		}
-
-		signerKey := config.SignerKey{
-			SigningPrivateKey: hex.EncodeToString(privateKeyBytes),
-			SigningPublicKey:  hex.EncodeToString(publicKeyBytes),
-		}
-		signers[signerType] = signerKey
-	}
-
-	// Serialize threshold signers
-	/*	var thresholdSigner *config.ThresholdSignerKey
-		suite := bn256.NewSuite()
-		if account.thresholdSigner != nil {
-			serializedShares := make(map[int]string)
-			tkp := account.thresholdSigner.Pair().(*signatures.ThresholdKeyPair)
-			for _, tkpShare := range tkp.Shares {
-				shareBytes, sbErr := signatures.SerializePriShare(suite, tkpShare)
-				if sbErr != nil {
-					return errors.Wrapf(sbErr, "failed to serialize PriShare")
-				}
-				serializedShares[tkpShare.I] = hex.EncodeToString(shareBytes) // Use share.I as key
-			}
-
-			commitmentsBytes, err := signatures.MarshalPubPoly(suite, tkp.Commitments)
-			if err != nil {
-				return errors.Wrap(err, "failed to serialize commitments")
-			}
-
-			thresholdSigner = &config.ThresholdSignerKey{
-				Shares:      serializedShares,
-				Threshold:   account.thresholdSigner.Threshold,
-				Commitments: hex.EncodeToString(commitmentsBytes),
-			}
-		}*/
-
 	// Serialize roles and extra permissions
 	keyRoles := &config.KeyRoles{
 		Roles:            []types.Role{},
@@ -455,11 +324,9 @@ func (s *Store) Save(account *Account) error {
 		PeerID:         account.peerID,
 		PeerPrivateKey: hex.EncodeToString(privKeyBytes),
 		PeerPublicKey:  hex.EncodeToString(pubKeyBytes),
-		Signers:        signers,
 		Address:        account.Address(),
 		Comment:        account.comment,
-		//ThresholdSigner: thresholdSigner,
-		RBAC: keyRoles, // Include RBAC roles and permissions
+		RBAC:           keyRoles, // Include RBAC roles and permissions
 	}
 
 	// Marshal the config.Key into YAML

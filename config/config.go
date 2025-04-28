@@ -7,6 +7,8 @@ import (
 	"os"
 )
 
+var global *Config
+
 // Config represents the overall application configuration, which includes logging,
 // transports, MDBX nodes, and pprof profiling options. This struct aggregates
 // all major configuration sections for easy management and access throughout the application.
@@ -119,4 +121,17 @@ func LoadConfig(filename string) (*Config, error) {
 	}
 
 	return &rawConfig, nil
+}
+
+func G() *Config {
+	return global
+}
+
+func InitializeGlobalConfig(filename string) (*Config, error) {
+	rawConfig, err := LoadConfig(filename)
+	if err != nil {
+		return nil, err
+	}
+	global = rawConfig
+	return rawConfig, nil
 }

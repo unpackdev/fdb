@@ -4,7 +4,6 @@ package topology
 import (
 	"context"
 	"fmt"
-	"github.com/holiman/uint256"
 	libp2pCrypto "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
@@ -100,10 +99,8 @@ func NewActors(logger logger.Logger, account share.Account, network *networking.
 			Address:             account.Address(),
 			Addresses:           network.Host().Addrs(),
 			Roles:               account.Roles(),
-			SupportedTransports: []types.TransportType{}, // TODO: Implement supported transports
-			SupportedProtocols:  []types.ProtocolType{},  // TODO: Implement supported protocols
-			SupportedSigners:    account.SupportedSigners(),
-			ConsensusPublicKey:  account.DkgPublicKey(),
+			SupportedTransports: []types.TransportType{},   // TODO: Implement supported transports
+			SupportedProtocols:  []types.ProtocolType{},    // TODO: Implement supported protocols
 			PublicKey:           account.MasterPublicKey(), // Internally external PublicKey is MasterPublicKey of the account
 		},
 		network:      network,
@@ -216,12 +213,12 @@ func (a *Actors) HandlePeerConnected(ctx context.Context, peerInfo peer.AddrInfo
 	a.markPeerAsPending(peerInfo.ID, peerInfo.Addrs)
 
 	// Send an ActorPacket with Status 0 (proposed) to request actor information
-	if err := a.SendActorRequestPacket(ctx, peerInfo.ID); err != nil {
-		if !networking.IsConnectionRefused(err) {
-			a.logger.Error("Failed to send ActorPacket (proposed) to peer", "peer_id", peerInfo.ID.String(), "error", err.Error())
-		}
-		return a.removePendingPeer(peerInfo.ID)
-	}
+	//if err := a.SendActorRequestPacket(ctx, peerInfo.ID); err != nil {
+	//	if !networking.IsConnectionRefused(err) {
+	//		a.logger.Error("Failed to send ActorPacket (proposed) to peer", "peer_id", peerInfo.ID.String(), "error", err.Error())
+	//	}
+	//	return a.removePendingPeer(peerInfo.ID)
+	//}
 
 	return nil
 }
@@ -481,12 +478,6 @@ func (a *Actors) verifyAndAddPeer(peerID peer.ID, actorInfo *packets.ActorPacket
 		return errors.Wrapf(ErrInvalidMessageType, "invalid PublicKey for peer %s: %w", peerID.String(), err)
 	}
 
-	var suite = a.account.DkgSuite()
-	var dkgPubKey = suite.Point()
-	if kpErr := dkgPubKey.UnmarshalBinary(actorInfo.ConsensusPublicKey); kpErr != nil {
-		return errors.Wrapf(ErrInvalidMessageType, "invalid consensus public key for peer %s discovered: %w", peerID.String(), kpErr)
-	}
-
 	// Create the Actor struct with verified information
 	actor := &Actor{
 		ID:                  peerID,
@@ -496,7 +487,6 @@ func (a *Actors) verifyAndAddPeer(peerID peer.ID, actorInfo *packets.ActorPacket
 		SupportedTransports: actorInfo.SupportedTransports,
 		SupportedProtocols:  actorInfo.SupportedProtocols,
 		SupportedSigners:    actorInfo.SupportedSigners,
-		ConsensusPublicKey:  dkgPubKey,
 		PublicKey:           publicKey,
 	}
 
@@ -545,7 +535,7 @@ func (a *Actors) verifyAndAddPeer(peerID peer.ID, actorInfo *packets.ActorPacket
 
 		actor.ConsensusActor = share.NewActor(a.account, a.assignShareIndex(peerID), a.logger)
 
-		account, aErr := accounts.NewConsensusAccount(a.logger, peerID, actorInfo.Address, publicKey, dkgPubKey, actor.Roles)
+		account, aErr := accounts.NewConsensusAccount(a.logger, peerID, actorInfo.Address, publicKey, actor.Roles)
 		if aErr != nil {
 			a.logger.Error(
 				"Failed to create consensus topology account",
@@ -588,169 +578,169 @@ func (a *Actors) verifyAndAddPeer(peerID peer.ID, actorInfo *packets.ActorPacket
 }
 
 // SendActorRequestPacket sends an ActorPacket with Status 0 (proposed) to request actor information.
-func (a *Actors) SendActorRequestPacket(ctx context.Context, peerID peer.ID) error {
-	// RBAC Check: Verify if self has PermissionSendActorPacket
-	if !a.rbac.HasPermission(a.self.Roles, rbac.PermissionSendActorPacket) {
-		a.logger.Warn("Insufficient permissions to send actor packet", "required_permission", rbac.PermissionSendActorPacket)
-		return ErrInsufficientPermissions
-	}
-
-	// Create an ActorPacket with Status 0 (proposed) and marshal PublicKey
-	apk, apkErr := a.account.MarshalPublicKey()
-	if apkErr != nil {
-		return errors.Wrap(apkErr, "cannot marshal actor (account) public key")
-	}
-
-	dkgPkBytes, dpbErr := a.account.DkgPublicKey().MarshalBinary()
-	if dpbErr != nil {
-		return errors.Wrap(dpbErr, "failed to marshal account consensus DKG public key")
-	}
-
-	ap := &packets.ActorPacket{
-		Address:             a.self.Address,
-		Status:              0, // 0 => proposed
-		Message:             "Requesting actor information.",
-		Roles:               a.self.Roles,
-		SupportedProtocols:  a.self.SupportedProtocols,
-		SupportedTransports: a.self.SupportedTransports,
-		SupportedSigners:    a.self.SupportedSigners,
-		ConsensusPublicKey:  dkgPkBytes,
-		PublicKey:           apk,
-	}
-
-	// Serialize ActorPacket
-	payload, err := ap.Serialize()
-	if err != nil {
-		return errors.Wrap(err, "failed to serialize ActorPacket")
-	}
-
-	// Create a NetworkPacket with PacketTypeActorPacket
-	networkPacket := &packets.NetworkPacket{
-		Type:       packets.ActorPacketType,
-		SenderID:   a.self.ID, // Use self Actor's ID
-		ReceiverID: peerID,
-		Payload:    payload,
-	}
-
-	// Serialize without signature for signing
-	signatureSerializedBytes, sbErr := networkPacket.SerializeWithoutSignature()
-	if sbErr != nil {
-		return errors.Wrap(sbErr, "failed to serialize network packet without signature")
-	}
-
-	// Sign the packet
-	signature, sErr := a.account.MasterPrivateKey().Sign(signatureSerializedBytes)
-	if sErr != nil {
-		return errors.Wrap(sErr, "failed to sign network packet")
-	}
-	networkPacket.Signature = signature
-
-	// Serialize the full NetworkPacket
-	serializedPacket, err := networkPacket.Serialize()
-	if err != nil {
-		return errors.Wrap(err, "failed to serialize NetworkPacket")
-	}
-
-	// Send the serialized NetworkPacket using networking.SendMessage
-	if err := a.network.SendMessage(ctx, a.network.ProtocolID, peerID, serializedPacket); err != nil {
-		return errors.Wrapf(err, "failed to send ActorPacket (proposed) to peer %s", peerID.String())
-	}
-
-	a.logger.Info("Sent ActorPacket (proposed)", "peer_id", peerID.String())
-	return nil
-}
+//func (a *Actors) SendActorRequestPacket(ctx context.Context, peerID peer.ID) error {
+//	// RBAC Check: Verify if self has PermissionSendActorPacket
+//	if !a.rbac.HasPermission(a.self.Roles, rbac.PermissionSendActorPacket) {
+//		a.logger.Warn("Insufficient permissions to send actor packet", "required_permission", rbac.PermissionSendActorPacket)
+//		return ErrInsufficientPermissions
+//	}
+//
+//	// Create an ActorPacket with Status 0 (proposed) and marshal PublicKey
+//	apk, apkErr := a.account.MarshalPublicKey()
+//	if apkErr != nil {
+//		return errors.Wrap(apkErr, "cannot marshal actor (account) public key")
+//	}
+//
+//	dkgPkBytes, dpbErr := a.account.DkgPublicKey().MarshalBinary()
+//	if dpbErr != nil {
+//		return errors.Wrap(dpbErr, "failed to marshal account consensus DKG public key")
+//	}
+//
+//	ap := &packets.ActorPacket{
+//		Address:             a.self.Address,
+//		Status:              0, // 0 => proposed
+//		Message:             "Requesting actor information.",
+//		Roles:               a.self.Roles,
+//		SupportedProtocols:  a.self.SupportedProtocols,
+//		SupportedTransports: a.self.SupportedTransports,
+//		SupportedSigners:    a.self.SupportedSigners,
+//		ConsensusPublicKey:  dkgPkBytes,
+//		PublicKey:           apk,
+//	}
+//
+//	// Serialize ActorPacket
+//	payload, err := ap.Serialize()
+//	if err != nil {
+//		return errors.Wrap(err, "failed to serialize ActorPacket")
+//	}
+//
+//	// Create a NetworkPacket with PacketTypeActorPacket
+//	networkPacket := &packets.NetworkPacket{
+//		Type:       packets.ActorPacketType,
+//		SenderID:   a.self.ID, // Use self Actor's ID
+//		ReceiverID: peerID,
+//		Payload:    payload,
+//	}
+//
+//	// Serialize without signature for signing
+//	signatureSerializedBytes, sbErr := networkPacket.SerializeWithoutSignature()
+//	if sbErr != nil {
+//		return errors.Wrap(sbErr, "failed to serialize network packet without signature")
+//	}
+//
+//	// Sign the packet
+//	signature, sErr := a.account.MasterPrivateKey().Sign(signatureSerializedBytes)
+//	if sErr != nil {
+//		return errors.Wrap(sErr, "failed to sign network packet")
+//	}
+//	networkPacket.Signature = signature
+//
+//	// Serialize the full NetworkPacket
+//	serializedPacket, err := networkPacket.Serialize()
+//	if err != nil {
+//		return errors.Wrap(err, "failed to serialize NetworkPacket")
+//	}
+//
+//	// Send the serialized NetworkPacket using networking.SendMessage
+//	if err := a.network.SendMessage(ctx, a.network.ProtocolID, peerID, serializedPacket); err != nil {
+//		return errors.Wrapf(err, "failed to send ActorPacket (proposed) to peer %s", peerID.String())
+//	}
+//
+//	a.logger.Info("Sent ActorPacket (proposed)", "peer_id", peerID.String())
+//	return nil
+//}
 
 // ProcessActorPacket processes the received ActorPacket based on its Status.
-func (a *Actors) ProcessActorPacket(ctx context.Context, peerID peer.ID, ap *packets.ActorPacket) error {
-	// RBAC Check: Verify if self has PermissionProcessActorPacket
-	if !a.rbac.HasPermission(a.self.Roles, rbac.PermissionProcessActorPacket) {
-		a.logger.Warn("Insufficient permissions to process actor packet", "required_permission", rbac.PermissionProcessActorPacket)
-		return ErrInsufficientPermissions
-	}
-
-	switch ap.Status {
-	case 0: // proposed
-		a.logger.Info("Received ActorPacket with Status 'proposed' from peer", "peer_id", peerID.String())
-
-		// Retrieve own PublicKey outside the lock
-		ownPublicKey, err := a.account.MarshalPublicKey()
-		if err != nil {
-			return errors.Wrap(err, "failed to marshal own PublicKey")
-		}
-
-		dkgPkBytes, dpbErr := a.account.DkgPublicKey().MarshalBinary()
-		if dpbErr != nil {
-			return errors.Wrap(dpbErr, "failed to marshal account consensus DKG public key")
-		}
-
-		// Create an approved ActorPacket
-		approvedPacket := &packets.ActorPacket{
-			Address:             a.account.Address(),
-			Status:              1, // approved
-			Message:             "Approved",
-			Roles:               a.account.Roles(),
-			SupportedTransports: a.account.SupportedTransports(),
-			SupportedProtocols:  a.account.SupportedProtocols(),
-			SupportedSigners:    a.account.SupportedSigners(),
-			ConsensusPublicKey:  dkgPkBytes,
-			PublicKey:           ownPublicKey,
-		}
-
-		// Send the approved ActorPacket using the provided context
-		if err := a.SendActorResponsePacket(ctx, peerID, approvedPacket); err != nil {
-			a.logger.Error("Failed to send approved ActorPacket", "peer_id", peerID.String(), "error", err.Error())
-			// Optionally, remove from pendingPeers if sending fails
-			a.removePendingPeer(peerID)
-			return errors.Wrapf(err, "failed to send approved ActorPacket to peer %s", peerID.String())
-		}
-
-		a.logger.Info("Sent approved ActorPacket to peer", "peer_id", peerID.String())
-
-	case 1: // approved
-
-		if err := a.verifyAndAddPeer(peerID, ap); err != nil && !errors.Is(err, share.ActorAlreadyExists) {
-			a.logger.Info("Peer not found in pendingPeers, handling as new verification", "peer_id", peerID.String(), "error", err.Error())
-
-			// Handle the case where the peer is not in pendingPeers
-			// This could happen due to simultaneous connections or race conditions
-			a.markPeerAsPending(peerID, a.self.Addresses)
-
-			// Retry verification and addition
-			err = a.verifyAndAddPeer(peerID, ap)
-			if err != nil && !errors.Is(err, share.ActorAlreadyExists) {
-				a.logger.Error("Failed to verify and add peer after marking as pending", "peer_id", peerID.String(), "error", err.Error())
-				return errors.Wrapf(err, "failed to verify and add peer %s after marking as pending", peerID.String())
-			}
-		}
-
-	case 2: // rejected
-		// Handle rejection
-		a.logger.Warn("Peer actor info rejected", "peer_id", peerID.String(), "message", ap.Message)
-		// RBAC Check: Verify if self has PermissionRemovePeer to disconnect
-		if !a.rbac.HasPermission(a.self.Roles, rbac.PermissionRemovePeer) {
-			a.logger.Warn("Insufficient permissions to remove rejected peer", "required_permission", rbac.PermissionRemovePeer)
-			return ErrInsufficientPermissions
-		}
-
-		// Disconnect the peer
-		if err := a.network.Host().Network().ClosePeer(peerID); err != nil {
-			a.logger.Error("Failed to disconnect peer after rejection", "peer_id", peerID.String(), "error", err.Error())
-		}
-		// Force removal from peers if present
-		if err := a.RemovePeer(ctx, peerID, true); err != nil {
-			a.logger.Error("Failed to remove rejected peer from topology", "peer_id", peerID.String(), "error", err.Error())
-		}
-		// Also remove from pendingPeers
-		a.removePendingPeer(peerID)
-		return errors.Wrapf(ErrPeerNotFound, "peer %s rejected: %s", peerID.String(), ap.Message)
-
-	default:
-		a.logger.Warn("Received ActorPacket with unknown Status", "peer_id", peerID.String(), "status", ap.Status)
-		return errors.Wrapf(ErrUnknownActorPacketStatus, "unknown ActorPacket status: %d", ap.Status)
-	}
-
-	return nil
-}
+//func (a *Actors) ProcessActorPacket(ctx context.Context, peerID peer.ID, ap *packets.ActorPacket) error {
+//	// RBAC Check: Verify if self has PermissionProcessActorPacket
+//	if !a.rbac.HasPermission(a.self.Roles, rbac.PermissionProcessActorPacket) {
+//		a.logger.Warn("Insufficient permissions to process actor packet", "required_permission", rbac.PermissionProcessActorPacket)
+//		return ErrInsufficientPermissions
+//	}
+//
+//	switch ap.Status {
+//	case 0: // proposed
+//		a.logger.Info("Received ActorPacket with Status 'proposed' from peer", "peer_id", peerID.String())
+//
+//		// Retrieve own PublicKey outside the lock
+//		ownPublicKey, err := a.account.MarshalPublicKey()
+//		if err != nil {
+//			return errors.Wrap(err, "failed to marshal own PublicKey")
+//		}
+//
+//		dkgPkBytes, dpbErr := a.account.DkgPublicKey().MarshalBinary()
+//		if dpbErr != nil {
+//			return errors.Wrap(dpbErr, "failed to marshal account consensus DKG public key")
+//		}
+//
+//		// Create an approved ActorPacket
+//		approvedPacket := &packets.ActorPacket{
+//			Address:             a.account.Address(),
+//			Status:              1, // approved
+//			Message:             "Approved",
+//			Roles:               a.account.Roles(),
+//			SupportedTransports: a.account.SupportedTransports(),
+//			SupportedProtocols:  a.account.SupportedProtocols(),
+//			SupportedSigners:    a.account.SupportedSigners(),
+//			ConsensusPublicKey:  dkgPkBytes,
+//			PublicKey:           ownPublicKey,
+//		}
+//
+//		// Send the approved ActorPacket using the provided context
+//		if err := a.SendActorResponsePacket(ctx, peerID, approvedPacket); err != nil {
+//			a.logger.Error("Failed to send approved ActorPacket", "peer_id", peerID.String(), "error", err.Error())
+//			// Optionally, remove from pendingPeers if sending fails
+//			a.removePendingPeer(peerID)
+//			return errors.Wrapf(err, "failed to send approved ActorPacket to peer %s", peerID.String())
+//		}
+//
+//		a.logger.Info("Sent approved ActorPacket to peer", "peer_id", peerID.String())
+//
+//	case 1: // approved
+//
+//		if err := a.verifyAndAddPeer(peerID, ap); err != nil && !errors.Is(err, share.ActorAlreadyExists) {
+//			a.logger.Info("Peer not found in pendingPeers, handling as new verification", "peer_id", peerID.String(), "error", err.Error())
+//
+//			// Handle the case where the peer is not in pendingPeers
+//			// This could happen due to simultaneous connections or race conditions
+//			a.markPeerAsPending(peerID, a.self.Addresses)
+//
+//			// Retry verification and addition
+//			err = a.verifyAndAddPeer(peerID, ap)
+//			if err != nil && !errors.Is(err, share.ActorAlreadyExists) {
+//				a.logger.Error("Failed to verify and add peer after marking as pending", "peer_id", peerID.String(), "error", err.Error())
+//				return errors.Wrapf(err, "failed to verify and add peer %s after marking as pending", peerID.String())
+//			}
+//		}
+//
+//	case 2: // rejected
+//		// Handle rejection
+//		a.logger.Warn("Peer actor info rejected", "peer_id", peerID.String(), "message", ap.Message)
+//		// RBAC Check: Verify if self has PermissionRemovePeer to disconnect
+//		if !a.rbac.HasPermission(a.self.Roles, rbac.PermissionRemovePeer) {
+//			a.logger.Warn("Insufficient permissions to remove rejected peer", "required_permission", rbac.PermissionRemovePeer)
+//			return ErrInsufficientPermissions
+//		}
+//
+//		// Disconnect the peer
+//		if err := a.network.Host().Network().ClosePeer(peerID); err != nil {
+//			a.logger.Error("Failed to disconnect peer after rejection", "peer_id", peerID.String(), "error", err.Error())
+//		}
+//		// Force removal from peers if present
+//		if err := a.RemovePeer(ctx, peerID, true); err != nil {
+//			a.logger.Error("Failed to remove rejected peer from topology", "peer_id", peerID.String(), "error", err.Error())
+//		}
+//		// Also remove from pendingPeers
+//		a.removePendingPeer(peerID)
+//		return errors.Wrapf(ErrPeerNotFound, "peer %s rejected: %s", peerID.String(), ap.Message)
+//
+//	default:
+//		a.logger.Warn("Received ActorPacket with unknown Status", "peer_id", peerID.String(), "status", ap.Status)
+//		return errors.Wrapf(ErrUnknownActorPacketStatus, "unknown ActorPacket status: %d", ap.Status)
+//	}
+//
+//	return nil
+//}
 
 // SendActorResponsePacket sends an ActorPacket (e.g., approved) to a peer.
 func (a *Actors) SendActorResponsePacket(ctx context.Context, peerID peer.ID, ap *packets.ActorPacket) error {

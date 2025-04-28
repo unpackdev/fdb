@@ -4,11 +4,15 @@ import (
 	"context"
 	"fmt"
 	"github.com/pkg/errors"
+	"github.com/unpackdev/fdb/accounts"
 	"github.com/unpackdev/fdb/config"
 	"github.com/unpackdev/fdb/db"
 	"github.com/unpackdev/fdb/logger"
+	"github.com/unpackdev/fdb/node"
 	"github.com/unpackdev/fdb/observability"
 	"github.com/unpackdev/fdb/pprof"
+	"github.com/unpackdev/fdb/rbac"
+	"github.com/unpackdev/fdb/state"
 	"github.com/unpackdev/fdb/transports"
 	transport_dummy "github.com/unpackdev/fdb/transports/dummy"
 	transport_quic "github.com/unpackdev/fdb/transports/quic"
@@ -21,10 +25,16 @@ import (
 )
 
 type FDB struct {
-	ctx       context.Context
-	config    config.Config
-	tm        *transports.Manager
-	dbManager *db.Manager
+	ctx      context.Context
+	config   config.Config
+	obs      *observability.Observability
+	tm       *transports.Manager
+	dbMgr    *db.Manager
+	rbacMgr  *rbac.Manager
+	store    *accounts.Store
+	account  *accounts.Account
+	stateMgr *state.StateManager
+	dNode    *node.Node
 }
 
 func New(ctx context.Context, cfg config.Config) (*FDB, error) {
@@ -55,11 +65,55 @@ func New(ctx context.Context, cfg config.Config) (*FDB, error) {
 		return nil, errors.Wrap(dbmErr, "failure to create database manager")
 	}
 
+	// Initialize global rbac (resource based access control)
+	rbacMgr, rbmErr := rbac.NewManager(
+		ctx,
+		rbac.WithDefaultRoles(),
+	)
+	if rbmErr != nil {
+		return nil, errors.Wrap(rbmErr, "failed to create rbac manager")
+	}
+
+	// Initialize global identity store.
+	// Identities will be necessary throughout different applications.
+	// This is where all peer ids can be found
+	store, err := accounts.NewStore(cfg.Identity, zLog, rbacMgr)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to create new account store")
+	}
+
+	// Attempt to load the identity from the manager using the PeerID
+	account, err := store.GetByPeerID(cfg.Networking.PeerID)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to load account from identity manager with PeerID: %s", cfg.Networking.PeerID)
+	}
+
+	stateMgr, smErr := state.NewManager(zLog, obs)
+	if smErr != nil {
+		return nil, errors.Wrap(smErr, "failure to create new global state manager")
+	}
+
+	// Node is basically a wrapper around consensus, chain, identity management, peer system and peer discovery system.
+	// Not to forget metrics and ping-pong game between peers to establish metrics baseline.
+	// Construction is done here because other services might need it.
+	// In this state, block producer callback is not set.
+	// Sequencer will be setting up block producer callback and utilize it.
+	dNode, dnErr := node.NewNode(ctx, cfg, rbacMgr, zLog, store, obs, stateMgr)
+	if dnErr != nil {
+		return nil, errors.Wrap(dnErr, "failed to initialize node")
+	}
+
 	fdbInstance := &FDB{
-		ctx:       ctx,
-		config:    cfg,
-		tm:        transportManager,
-		dbManager: dbM,
+		ctx:      ctx,
+		config:   cfg,
+		obs:      obs,
+		tm:       transportManager,
+		dbMgr:    dbM,
+		rbacMgr:  rbacMgr,
+		store:    store,
+		account:  account,
+		stateMgr: stateMgr,
+		dNode:    dNode,
 	}
 
 	for _, transport := range cfg.Transports {
@@ -148,6 +202,10 @@ func (fdb *FDB) Start(ctx context.Context, transports ...types.TransportType) er
 		})
 	}
 
+	g.Go(func() error {
+		return fdb.dNode.Start()
+	})
+
 	if gErr := g.Wait(); gErr != nil {
 		return errors.Wrap(gErr, "failure to start fdb database")
 	}
@@ -170,6 +228,10 @@ func (fdb *FDB) Stop(transports ...types.TransportType) error {
 		}
 	}
 
+	if err := fdb.dNode.Shutdown(); err != nil {
+		return err
+	}
+
 	zap.L().Info("All transports successfully stopped")
 	return nil
 }
@@ -179,11 +241,31 @@ func (fdb *FDB) GetConfig() config.Config {
 }
 
 func (fdb *FDB) GetDbManager() *db.Manager {
-	return fdb.dbManager
+	return fdb.dbMgr
+}
+
+func (fdb *FDB) GetRbacManager() *rbac.Manager {
+	return fdb.rbacMgr
 }
 
 func (fdb *FDB) GetTransportManager() *transports.Manager {
 	return fdb.tm
+}
+
+func (fdb *FDB) GetStateManager() *state.StateManager {
+	return fdb.stateMgr
+}
+
+func (fdb *FDB) GetObservability() *observability.Observability {
+	return fdb.obs
+}
+
+func (fdb *FDB) GetAccount() *accounts.Account {
+	return fdb.account
+}
+
+func (fdb *FDB) GetNode() *node.Node {
+	return fdb.dNode
 }
 
 // GetTransportByType allows retrieval of specific transport from the manager
