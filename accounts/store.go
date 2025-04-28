@@ -7,18 +7,19 @@ import (
 	"fmt"
 	libp2pCrypto "github.com/libp2p/go-libp2p/core/crypto"
 	libp2pPeer "github.com/libp2p/go-libp2p/core/peer"
-	"github.com/peerdns/peerd/pkg/rbac"
-	"github.com/peerdns/peerd/pkg/share"
+	"github.com/unpackdev/fdb/config"
+	"github.com/unpackdev/fdb/logger"
+	"github.com/unpackdev/fdb/rbac"
+	"github.com/unpackdev/fdb/share"
+	"github.com/unpackdev/fdb/signatures"
+	"github.com/unpackdev/fdb/types"
+
 	"github.com/sasha-s/go-deadlock"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 	"os"
 	"path/filepath"
 
-	"github.com/peerdns/peerd/pkg/config"
-	"github.com/peerdns/peerd/pkg/logger"
-	"github.com/peerdns/peerd/pkg/signatures"
-	"github.com/peerdns/peerd/pkg/types"
 	"github.com/pkg/errors"
 )
 

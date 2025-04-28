@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"github.com/cloudflare/circl/sign/ed25519"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/peerdns/peerd/pkg/share"
+	"github.com/unpackdev/fdb/share"
 	"github.com/unpackdev/fdb/types"
 )
 

@@ -7,7 +7,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"github.com/peerdns/peerd/pkg/share"
+	"github.com/unpackdev/fdb/share"
 	"github.com/unpackdev/fdb/types"
 
 	"github.com/cloudflare/circl/group"

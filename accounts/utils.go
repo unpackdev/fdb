@@ -5,8 +5,8 @@ package accounts
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"github.com/unpackdev/fdb/types"
 
-	"github.com/peerdns/peerd/pkg/types"
 	"github.com/pkg/errors"
 )
 

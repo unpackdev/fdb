@@ -2,6 +2,7 @@ package signatures
 
 import (
 	"fmt"
+
 	"go.dedis.ch/kyber/v4/pairing/bls12381/kilic"
 	"go.dedis.ch/kyber/v4/pairing/bn256"
 	dkg "go.dedis.ch/kyber/v4/share/dkg/pedersen"
@@ -23,7 +24,7 @@ func NewSuiteFactory(suiteType SuiteType) (dkg.Suite, error) {
 	case BN256:
 		return bn256.NewSuiteG2(), nil
 	case BLS12381:
-		return kilic.NewSuiteBLS12381(), nil
+		return bls12381.NewSuiteG2(), nil
 	default:
 		return nil, fmt.Errorf("unsupported suite type: %s", suiteType)
 	}

@@ -2,7 +2,7 @@ package signatures
 
 import (
 	"fmt"
-	"github.com/peerdns/peerd/pkg/types"
+	"github.com/unpackdev/fdb/types"
 )
 
 // Verify verifies the signature based on the SignerType and public key.

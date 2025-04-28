@@ -6,8 +6,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/peerdns/peerd/pkg/logger"
-	"github.com/peerdns/peerd/pkg/share"
+	"github.com/unpackdev/fdb/logger"
+	"github.com/unpackdev/fdb/share"
+
 	"github.com/sasha-s/go-deadlock"
 	"go.dedis.ch/kyber/v4"
 	kshare "go.dedis.ch/kyber/v4/share"

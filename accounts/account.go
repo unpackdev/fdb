@@ -8,11 +8,12 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	libp2pCrypto "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/peerdns/peerd/pkg/logger"
-	"github.com/peerdns/peerd/pkg/rbac"
-	"github.com/peerdns/peerd/pkg/share"
-	"github.com/peerdns/peerd/pkg/signatures"
-	"github.com/peerdns/peerd/pkg/types"
+	"github.com/unpackdev/fdb/logger"
+	"github.com/unpackdev/fdb/rbac"
+	"github.com/unpackdev/fdb/share"
+	"github.com/unpackdev/fdb/signatures"
+	"github.com/unpackdev/fdb/types"
+
 	"github.com/pkg/errors"
 	"github.com/sasha-s/go-deadlock"
 	"go.dedis.ch/kyber/v4"
@@ -379,44 +380,6 @@ func (a *Account) Sign(signerType types.SignerType, data []byte) ([]byte, error)
 	}
 
 	return signature, nil
-}
-
-// SignTx signs the given types.Transaction using the specified signer type.
-func (a *Account) SignTx(signerType types.SignerType, tx share.Transaction) (share.Transaction, error) {
-	if a == nil {
-		return nil, errors.New("account cannot be nil")
-	}
-	if tx == nil {
-		return nil, errors.New("transaction to sign cannot be nil")
-	}
-
-	// RBAC check: ensure the account has permission to sign transactions
-	if err := a.Authorize(rbac.PermissionSignTransactions); err != nil {
-		return nil, err
-	}
-
-	// Retrieve the signer from the account.
-	signer, exists := a.signers[signerType]
-	if !exists {
-		return nil, errors.Errorf("requested signer not found for associated account: %s", signerType)
-	}
-
-	// The master key pair is used to overall sign the transaction, including signers
-	masterPrivKey := a.masterPrivateKey
-	if masterPrivKey == nil {
-		return nil, errors.New("master private key is nil")
-	}
-
-	masterPubKey := a.masterPublicKey
-	if masterPubKey == nil {
-		return nil, errors.New("master public key is nil")
-	}
-
-	if err := tx.Sign(signer, masterPrivKey, masterPubKey); err != nil {
-		return nil, fmt.Errorf("failed to sign transaction with signer type %s: %w", signerType, err)
-	}
-
-	return tx, nil
 }
 
 // Verify verifies the given signature for the data using the specified signer type.

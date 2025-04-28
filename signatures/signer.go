@@ -2,8 +2,9 @@ package signatures
 
 import (
 	"fmt"
-	"github.com/peerdns/peerd/pkg/share"
-	"github.com/peerdns/peerd/pkg/types"
+	"github.com/unpackdev/fdb/share"
+	"github.com/unpackdev/fdb/types"
+
 	"github.com/sasha-s/go-deadlock"
 )
 

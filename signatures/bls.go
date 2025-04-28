@@ -3,7 +3,7 @@ package signatures
 import (
 	"crypto/sha256"
 	"fmt"
-	"github.com/peerdns/peerd/pkg/share"
+	"github.com/unpackdev/fdb/share"
 	"github.com/unpackdev/fdb/types"
 
 	"github.com/pkg/errors"

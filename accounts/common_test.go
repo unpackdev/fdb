@@ -3,10 +3,10 @@
 package accounts
 
 import (
+	"github.com/unpackdev/fdb/config"
+	"github.com/unpackdev/fdb/logger"
 	"testing"
 
-	"github.com/peerdns/peerd/pkg/config"
-	"github.com/peerdns/peerd/pkg/logger"
 	"github.com/stretchr/testify/require"
 )
 

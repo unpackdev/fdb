@@ -5,11 +5,10 @@ package signatures
 import (
 	"fmt"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/peerdns/peerd/pkg/logger"
-	"github.com/peerdns/peerd/pkg/share"
-	"github.com/peerdns/peerd/pkg/types"
 	"github.com/pkg/errors"
 	"github.com/sasha-s/go-deadlock"
+	"github.com/unpackdev/fdb/logger"
+	"github.com/unpackdev/fdb/share"
 	"go.dedis.ch/kyber/v4/pairing"
 	kshare "go.dedis.ch/kyber/v4/share"
 	"go.dedis.ch/kyber/v4/sign/tbls"

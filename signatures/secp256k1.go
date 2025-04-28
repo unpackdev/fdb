@@ -6,8 +6,8 @@ import (
 	"crypto/ecdsa"
 	"fmt"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/peerdns/peerd/pkg/share"
-	"github.com/peerdns/peerd/pkg/types"
+	"github.com/unpackdev/fdb/share"
+	"github.com/unpackdev/fdb/types"
 )
 
 // Secp256k1KeyPair represents a secp256k1 ECDSA key pair.

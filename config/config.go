@@ -30,6 +30,9 @@ type Config struct {
 	// Networking holds the configuration for the P2P networking.
 	Networking Networking `yaml:"networking"`
 
+	// Identity holds the configuration for the identity of the node.
+	Identity Identity `yaml:"identity"`
+
 	// Rpc holds the configuration for the RPC protocol.
 	Rpc Rpc `yaml:"rpc"`
 }

@@ -3,7 +3,7 @@ package accounts
 
 import (
 	"fmt"
-	"github.com/peerdns/peerd/pkg/types"
+	"github.com/unpackdev/fdb/types"
 )
 
 // Roles returns the list of roles assigned to the account.

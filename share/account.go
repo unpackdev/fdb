@@ -94,9 +94,6 @@ type Account interface {
 	// Sign signs the given data using the specified signer type.
 	Sign(signerType types.SignerType, data []byte) ([]byte, error)
 
-	// SignTx signs the given transaction using the specified signer type.
-	SignTx(signerType types.SignerType, tx Transaction) (Transaction, error)
-
 	// Verify verifies the given signature for the data using the specified signer type.
 	Verify(signerType types.SignerType, data []byte, signature []byte) (bool, error)
 
