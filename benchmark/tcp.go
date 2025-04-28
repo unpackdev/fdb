@@ -6,6 +6,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/unpackdev/fdb"
 	"github.com/unpackdev/fdb/db"
+	"github.com/unpackdev/fdb/messages"
+	"github.com/unpackdev/fdb/transports"
 	transport_tcp "github.com/unpackdev/fdb/transports/tcp"
 	"github.com/unpackdev/fdb/types"
 	"go.uber.org/zap"
@@ -58,11 +60,11 @@ func (ts *TcpSuite) Start(ctx context.Context) error {
 	// Create a new BatchWriter with a batch size of 512 and flush interval of 1 second
 	batchWriter := db.NewBatchWriter(bDb.(*db.Db), 512, 500*time.Millisecond, 15)
 
-	wHandler := transport_tcp.NewTCPWriteHandler(bDb, batchWriter)
-	tcpServer.RegisterHandler(types.WriteHandlerType, wHandler.HandleMessage)
+	wHandler := transports.NewTCPWriteHandler(bDb, batchWriter)
+	tcpServer.RegisterHandler(types.WriteHandlerType, wHandler)
 
-	rHandler := transport_tcp.NewTCPReadHandler(bDb)
-	tcpServer.RegisterHandler(types.ReadHandlerType, rHandler.HandleMessage)
+	rHandler := transports.NewTCPReadHandler(bDb)
+	tcpServer.RegisterHandler(types.ReadHandlerType, rHandler)
 
 	if sErr := tcpServer.Start(ctx); sErr != nil {
 		zap.L().Error("failed to start TCP transport", zap.Error(sErr))
@@ -124,6 +126,49 @@ func (ts *TcpSuite) runBenchmark(ctx context.Context, numClients int, numMessage
 
 	g, ctx := errgroup.WithContext(ctx)
 
+	tmpClient, err := ts.AcquireClient()
+	if err != nil {
+		return err
+	}
+	defer tmpClient.Close()
+
+	var readMsg messages.Message
+	// For read-only benchmarking
+	// Somehow we need to ensure that key we are trying to read exists on the server.
+	// Write only naturally has all of it, while read only does not so idea is:
+	// Create 1 message and ensure it's returned back so we can see the key.
+	// Then spawn read if we are in read mode
+	if !isWrite { // Read benchmark
+		// Retrieve a buffer from the pool
+		buf := ts.pool.Get().([]byte)
+
+		// Create and encode the write message (reusing the buffer)
+		readMsg = createWriteMessage()
+		encodedMessage, err := readMsg.EncodeWithBuffer(buf)
+		if err != nil {
+			// Return the buffer to the pool on error
+			ts.pool.Put(buf)
+			return fmt.Errorf("failed to encode message: %w", err)
+		}
+
+		// Write the message to the server
+		_, err = tmpClient.Write(encodedMessage)
+		if err != nil {
+			atomic.AddInt64(&failedMessages, 1)
+			ts.pool.Put(buf)
+			return errors.Wrap(err, "failed to write TCP message")
+		}
+
+		// Read the response from the server
+		responseBuf := make([]byte, len(encodedMessage)) // Adjust size as per response
+		_, err = tmpClient.Read(responseBuf)
+		if err != nil {
+			atomic.AddInt64(&failedMessages, 1)
+			ts.pool.Put(buf)
+			return errors.Wrap(err, "failed to read TCP response")
+		}
+	}
+
 	for i := 1; i <= numClients; i++ {
 		g.Go(func() error {
 			client, err := ts.AcquireClient()
@@ -175,8 +220,25 @@ func (ts *TcpSuite) runBenchmark(ctx context.Context, numClients int, numMessage
 					}
 
 					if !isWrite { // For read-only benchmarking
+						// Create and encode the read message (reusing the buffer)
+						message := createReadMessage(readMsg.Key)
+						encodedMessage, err := message.EncodeWithBuffer(buf)
+						if err != nil {
+							// Return the buffer to the pool on error
+							ts.pool.Put(buf)
+							return fmt.Errorf("failed to encode message: %w", err)
+						}
+
+						// Write the message to the server
+						_, err = client.Write(encodedMessage)
+						if err != nil {
+							atomic.AddInt64(&failedMessages, 1)
+							ts.pool.Put(buf)
+							return errors.Wrap(err, "failed to write TCP message")
+						}
+
 						// Read the response from the server
-						responseBuf := make([]byte, 1024) // Adjust size as per response
+						responseBuf := make([]byte, len(encodedMessage)) // Adjust size as per response
 						_, err = client.Read(responseBuf)
 						if err != nil {
 							atomic.AddInt64(&failedMessages, 1)
@@ -217,7 +279,7 @@ func (ts *TcpSuite) runBenchmark(ctx context.Context, numClients int, numMessage
 	// Calculate jitter (standard deviation of latencies)
 	report.Jitter = calculateStdDev(report.LatencyHistogram)
 
-	// Update report after all clients have finished
+	// Update the report after all clients have finished
 	report.SuccessMessages = int(successMessages)
 	report.FailedMessages = int(failedMessages)
 	report.TotalMessages = int(successMessages) + int(failedMessages)

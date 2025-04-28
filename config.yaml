@@ -14,6 +14,24 @@ mdbx:
       growthStep: 4096         # Growth step size (4 KB)
       filePermissions: 0600    # File permissions for the database
 
+# ======================================================================================
+# P2P NETWORKING RELATED CONFIGURATION
+# ======================================================================================
+networking:
+  peerId: "12D3KooWNCXC8gZFxvcjpFGhjcdFndkTs7k7RnanB9mxwWkNXuWx"
+  listenAddrs:  # Changed from single port to multiple listen addresses
+    - "/ip4/0.0.0.0/tcp/8432"               # Listen on all TCP IPv4 interfaces
+    - "/ip6/::/tcp/8432"                    # Listen on all TCP IPv6 interfaces
+    - "/ip4/0.0.0.0/udp/8432"               # Listen on all UDP IPv4 interfaces
+    - "/ip6/::/udp/8432"                    # Listen on all UDP IPv6 interfaces
+  protocolId: "/fdb/1.0.0"             # Unique protocol identifier
+  bootstrapPeers:
+    - /ip4/127.0.0.1/tcp/8432/p2p/12D3KooWNCXC8gZFxvcjpFGhjcdFndkTs7k7RnanB9mxwWkNXuWx # For bootstrap node it is here but will be ignored
+  bootstrapNode: true                        # Set to true if this node is the bootstrap node in the network.
+  mdns: true                                 # Enable or disable Multicast DNS (mDNS) discovery.
+  enableRelay: true                          # Enable relay connections if needed.
+  interface_name: "enp73s0"                  # Network interface name for eBPF (if applicable)
+
 pprof:
   - name: fdb
     enabled: true

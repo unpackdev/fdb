@@ -21,6 +21,8 @@ func ProtocolTypeFromUint32(u uint32) ProtocolType {
 		return RPCProtocol
 	case 2:
 		return WebSocketProtocol
+	case 3:
+		return BinaryProtocol
 	default:
 		return -1 // Represents an unknown ProtocolType
 	}
@@ -31,6 +33,7 @@ const (
 	HTTPProtocol ProtocolType = iota
 	RPCProtocol
 	WebSocketProtocol
+	BinaryProtocol
 )
 
 // String returns the string representation of the ProtocolType.
@@ -42,6 +45,8 @@ func (p ProtocolType) String() string {
 		return "rpc"
 	case WebSocketProtocol:
 		return "websocket"
+	case BinaryProtocol:
+		return "binary"
 	default:
 		return "unknown"
 	}
@@ -56,6 +61,8 @@ func ParseProtocolType(s string) (ProtocolType, error) {
 		return RPCProtocol, nil
 	case "websocket":
 		return WebSocketProtocol, nil
+	case "binary":
+		return BinaryProtocol, nil
 	default:
 		return -1, fmt.Errorf("unknown protocol type: %s", s)
 	}

@@ -77,6 +77,10 @@ const (
 // HandlerType represents different types of handlers
 type HandlerType byte
 
+func (h HandlerType) String() string {
+	return string(h)
+}
+
 // FromByte converts a byte into a HandlerType
 func (h *HandlerType) FromByte(b byte) error {
 	switch b {

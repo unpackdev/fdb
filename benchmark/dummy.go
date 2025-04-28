@@ -197,7 +197,7 @@ func (ds *DummySuite) runBenchmark(ctx context.Context, numClients int, numMessa
 	// Calculate jitter (standard deviation of latencies)
 	report.Jitter = calculateStdDev(report.LatencyHistogram)
 
-	// Update report after all clients have finished
+	// Update the report after all clients have finished
 	report.SuccessMessages = int(successMessages)
 	report.FailedMessages = int(failedMessages)
 	report.TotalMessages = int(successMessages) + int(failedMessages)

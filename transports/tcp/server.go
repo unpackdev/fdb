@@ -3,7 +3,6 @@ package tcp
 
 import (
 	"context"
-	"encoding/binary"
 	"github.com/unpackdev/fdb/transports"
 
 	"github.com/sasha-s/go-deadlock"
@@ -28,7 +27,7 @@ type OnCloseHandlerFn func(ctx *ConnectionContext, c gnet.Conn)
 // Server represents the TCP server.
 type Server struct {
 	ctx              context.Context
-	handlerRegistry  map[types.ProtocolType]transports.Handler
+	handlerRegistry  map[types.HandlerType]transports.Handler
 	cnf              config.TcpTransport
 	stopChan         chan struct{}
 	started          chan struct{}
@@ -49,7 +48,7 @@ type Server struct {
 func NewServer(ctx context.Context, cnf config.TcpTransport, logger logger.Logger, obs *observability.Observability) (*Server, error) {
 	server := &Server{
 		ctx:             ctx,
-		handlerRegistry: make(map[types.ProtocolType]transports.Handler),
+		handlerRegistry: make(map[types.HandlerType]transports.Handler),
 		cnf:             cnf,
 		stopChan:        make(chan struct{}),
 		started:         make(chan struct{}), // Buffered to prevent blocking
@@ -265,6 +264,8 @@ func (s *Server) OnTraffic(c gnet.Conn) (action gnet.Action) {
 		return gnet.Close
 	}
 
+	//s.logger.Debug("On traffic reached...")
+
 	// In case that on traffic handler is set, bypass the entire packet handling bellow.
 	// Bellow custom packet is expected (Protocol+PacketLength+Data) where this WILL NOT
 	// be the case with HTTP, WebSocket, etc...
@@ -282,54 +283,30 @@ func (s *Server) OnTraffic(c gnet.Conn) (action gnet.Action) {
 		return gnet.None
 	}
 
-	// Append new data to the buffer
-	ctx.Buffer = append(ctx.Buffer, data...)
-
-	// Process all complete messages
-	for {
-		if len(ctx.Buffer) < 4 {
-			// Not enough data for length prefix
-			break
-		}
-
-		// Read the length prefix
-		length := binary.BigEndian.Uint32(ctx.Buffer[:4])
-		if len(ctx.Buffer) < int(4+length) {
-			// Not enough data for the complete message
-			break
-		}
-
-		// Extract the message
-		message := ctx.Buffer[4 : 4+length]
-
-		// Update the buffer
-		ctx.Buffer = ctx.Buffer[4+length:]
-
-		// Validate the message
-		if len(message) < 1 {
-			s.logger.Warn("Invalid protocol type received", zap.String("addr", c.RemoteAddr().String()))
-			continue
-		}
-
-		// Parse the ProtocolType (first byte)
-		protocolType := types.ProtocolType(message[0])
-
-		// Retrieve the handler
-		s.mu.RLock()
-		handler, exists := s.handlerRegistry[protocolType]
-		s.mu.RUnlock()
-		if !exists {
-			s.logger.Warn("Unknown protocol handler", zap.String("protocol_type", protocolType.String()))
-			continue
-		}
-
-		// Extract the frame (excluding the ProtocolType byte)
-		frame := message[1:]
-
-		// Dispatch to the handler
-		handler.Handle(ctx.Conn, frame)
+	// Parse the action type
+	handlerType, err := s.parseFrameType(data)
+	if err != nil {
+		c.AsyncWrite([]byte("ERROR: Invalid action"), nil)
+		return gnet.None
 	}
 
+	//s.logger.Debug("On traffic reached...", "handler", handlerType, "data", data)
+
+	// Retrieve the handler
+	s.mu.RLock()
+	handler, exists := s.handlerRegistry[handlerType]
+	s.mu.RUnlock()
+	if !exists {
+		s.logger.Warn("Handler not registered", zap.String("handler_type", handlerType.String()))
+		c.AsyncWrite([]byte("ERROR: Handler not registered"), nil)
+		return gnet.None
+	}
+
+	// Extract the frame (excluding the ProtocolType byte)
+	frame := data[1:]
+
+	// Dispatch to the handler
+	handler.Handle(ctx.Conn, frame)
 	return gnet.None
 }
 
@@ -359,7 +336,6 @@ func (s *Server) Stop() error {
 		for attempt := 1; attempt <= maxRetries; attempt++ {
 			// Create a new context for stopping the server
 			stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
 
 			err := s.eng.Stop(stopCtx)
 			if err != nil {
@@ -368,16 +344,19 @@ func (s *Server) Stop() error {
 				if attempt < maxRetries {
 					s.logger.Info("Retrying to stop TCP Server", zap.Int("attempt", attempt+1))
 					time.Sleep(retryInterval)
+					cancel()
 					continue
 				}
 				// Update state to Failed if stopping fails
 				s.stateManager.SetState(ServerStateType, Failed)
 				stopErr = err
+				cancel()
 				break
 			}
 
 			// Wait for the server goroutine to finish
 			s.wg.Wait()
+			cancel()
 
 			// Close the stop channel to indicate the server is stopping
 			select {
@@ -403,7 +382,7 @@ func (s *Server) WaitStarted() <-chan struct{} {
 }
 
 // RegisterHandler registers a handler for a specific protocol type.
-func (s *Server) RegisterHandler(protocolType types.ProtocolType, handler transports.Handler) {
+func (s *Server) RegisterHandler(protocolType types.HandlerType, handler transports.Handler) {
 	s.logger.Debug("Registering handler", zap.String("protocol_type", protocolType.String()))
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -411,9 +390,24 @@ func (s *Server) RegisterHandler(protocolType types.ProtocolType, handler transp
 }
 
 // DeregisterHandler removes a handler for a specific protocol type.
-func (s *Server) DeregisterHandler(protocolType types.ProtocolType) {
+func (s *Server) DeregisterHandler(protocolType types.HandlerType) {
 	s.logger.Debug("Deregistering handler", zap.String("protocol_type", protocolType.String()))
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	delete(s.handlerRegistry, protocolType)
+}
+
+// parseActionType parses the action type from the frame
+func (s *Server) parseFrameType(frame []byte) (types.HandlerType, error) {
+	if len(frame) < 1 {
+		return 0, errors.New("invalid frame: frame too short")
+	}
+
+	var actionType types.HandlerType
+	err := actionType.FromByte(frame[0])
+	if err != nil {
+		return 0, err
+	}
+
+	return actionType, nil
 }
