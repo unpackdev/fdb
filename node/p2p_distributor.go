@@ -229,6 +229,7 @@ func (d *P2PDistributor) processPendingBatches(queue chan *RecordBatch) {
 	drainCount := 0
 	maxDrain := 100 // Safety limit
 
+drainLoop:
 	for recordCount < d.batchSize && drainCount < maxDrain {
 		select {
 		case batch := <-queue:
@@ -280,8 +281,8 @@ func (d *P2PDistributor) processPendingBatches(queue chan *RecordBatch) {
 
 			drainCount++
 		default:
-			// Queue empty
-			break
+			// Queue empty, break out of the outer loop
+			break drainLoop
 		}
 	}
 

@@ -292,7 +292,7 @@ func (s *Server) OnTraffic(c gnet.Conn) (action gnet.Action) {
 		return gnet.None
 	}
 
-	s.logger.Debug("ON TRAFFIC REACHED...", "handler", handlerType, "data", data)
+	//s.logger.Debug("ON TRAFFIC REACHED...", "handler", handlerType, "data", data)
 
 	// Retrieve the handler
 	s.mu.RLock()

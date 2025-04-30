@@ -250,10 +250,12 @@ func (fdb *FDB) Start(ctx context.Context, transports ...types.TransportType) er
 		return errors.Wrap(gErr, "failure to start fdb database")
 	}
 
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
+	<-ctx.Done()
+	if err := ctx.Err(); err != nil && !errors.Is(err, context.Canceled) {
+		return err
 	}
+
+	return nil
 }
 
 func (fdb *FDB) Stop(transports ...types.TransportType) error {
