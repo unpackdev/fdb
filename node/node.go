@@ -335,6 +335,17 @@ func (n *Node) Shutdown() error {
 		return err
 	}
 
+	// Stop the P2P distributor
+	if n.distributor != nil {
+		n.distributor.Stop()
+	}
+
+	if err := n.stateMgr.WaitForState(P2PDistributorStateType, state.Stopped, 10*time.Second); err != nil {
+		n.logger.Error("Failed to stop P2P distributor", zap.Error(err))
+		n.stateMgr.SetState(NodeStateType, state.Failed)
+		return err
+	}
+
 	n.logger.Info("Node shutdown complete")
 
 	// Set the state to Stopped after shutting down.

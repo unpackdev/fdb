@@ -2,16 +2,18 @@ package node
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"time"
 
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/protocol"
+	"github.com/pkg/errors"
+	"github.com/sasha-s/go-deadlock"
 	"github.com/unpackdev/fdb/db"
 	"github.com/unpackdev/fdb/logger"
 	"github.com/unpackdev/fdb/packets"
+	"github.com/unpackdev/fdb/state"
 	"go.uber.org/zap"
 )
 
@@ -19,6 +21,9 @@ import (
 const (
 	BulkProtocolSuffix = "/bulk/1.0.0"
 )
+
+// P2PDistributorStateType is the type identifier for P2PDistributor state
+const P2PDistributorStateType state.StateType = "p2p_distributor"
 
 // Priority represents the importance level of a record batch
 type Priority uint8
@@ -45,7 +50,7 @@ type DistributionStats struct {
 	BatchesSent        int64
 	TransmissionErrors int64
 	AverageLatencyMs   int64
-	mu                 sync.RWMutex
+	mu                 deadlock.RWMutex
 }
 
 // RecordBatch represents a batch of records to be distributed
@@ -68,16 +73,20 @@ type P2PDistributor struct {
 	ctx               context.Context
 	cancel            context.CancelFunc
 	logger            logger.Logger
+	stateMgr          *state.StateManager // Manages the distributor's state
 }
 
 // NewP2PDistributor creates a new P2P distributor
 func NewP2PDistributor(node *Node, batchSize int) *P2PDistributor {
 	ctx, cancel := context.WithCancel(context.Background())
 
+	node.stateMgr.SetState(P2PDistributorStateType, state.Initializing)
+	defer node.stateMgr.SetState(P2PDistributorStateType, state.Initialized)
+
 	return &P2PDistributor{
 		node:              node,
 		batchSize:         batchSize,
-		bufferPool:        &sync.Pool{New: func() interface{} { return make([]byte, 64*1024) }},
+		bufferPool:        &sync.Pool{New: func() any { return make([]byte, 64*1024) }},
 		stats:             &DistributionStats{},
 		highPriorityQueue: make(chan *RecordBatch, 1000),
 		normalQueue:       make(chan *RecordBatch, 10000),
@@ -85,58 +94,104 @@ func NewP2PDistributor(node *Node, batchSize int) *P2PDistributor {
 		ctx:               ctx,
 		cancel:            cancel,
 		logger:            node.logger,
+		stateMgr:          node.stateMgr,
 	}
 }
 
 // Start begins processing the distribution queues
-func (d *P2PDistributor) Start() {
+func (d *P2PDistributor) Start() error {
 	d.logger.Info("Starting P2P distributor")
+	d.stateMgr.SetState(P2PDistributorStateType, state.Starting)
 
 	// Register handlers for incoming P2P record batches via direct protocols
 	d.node.network.HandlerRegistry().RegisterHandler(packets.RecordBatchType, d.HandleRecordBatchPacket)
 	d.logger.Info("Registered handler for direct RecordBatch messages")
 
-	// Subscribe to PubSub topic for gossip-based record distribution
-	// This is critical since most P2P messages are sent via gossip/pubsub
-	topic := d.node.network.Topic
-	if topic != nil {
-		// Create subscription to the PubSub topic
-		sub, err := topic.Subscribe()
-		if err != nil {
-			d.logger.Error("Failed to subscribe to PubSub topic", zap.Error(err))
-		} else {
-			d.logger.Info("Subscribed to P2P gossip messages")
-			// Process subscription messages in a separate goroutine
-			go d.handlePubSubMessages(sub)
-		}
+	// Create subscription to the PubSub topic
+	sub, err := d.node.network.Topic.Subscribe()
+	if err != nil {
+		d.logger.Error("Failed to subscribe to PubSub topic", zap.Error(err))
+		d.stateMgr.SetState(P2PDistributorStateType, state.Failed)
+		return err
 	} else {
-		d.logger.Warn("PubSub topic is nil, gossip distribution will not work")
+		d.logger.Info("Subscribed to P2P gossip messages")
+		// Process subscription messages in a separate goroutine
+		go d.handlePubSubMessages(sub)
 	}
 
 	// Start queue processors
 	go d.processQueue(d.highPriorityQueue, 50*time.Millisecond)  // Process high priority quickly
 	go d.processQueue(d.normalQueue, 200*time.Millisecond)       // Process normal priority at medium pace
 	go d.processQueue(d.lowPriorityQueue, 1000*time.Millisecond) // Process low priority at slower pace
+
+	d.stateMgr.SetState(P2PDistributorStateType, state.Started)
+	return nil
 }
 
-// Stop halts all distribution processes
+// Stop gracefully halts all distribution processes
 func (d *P2PDistributor) Stop() {
-	d.logger.Info("Stopping P2P distributor")
+	d.logger.Info("Stopping P2P distributor - processing remaining items")
+	d.stateMgr.SetState(P2PDistributorStateType, state.Stopping)
+
+	// Process all remaining items in queues before shutting down
+	// This ensures data consistency and prevents data loss
+	highCount := d.processRemainingQueue(d.highPriorityQueue)
+	normalCount := d.processRemainingQueue(d.normalQueue)
+	lowCount := d.processRemainingQueue(d.lowPriorityQueue)
+
+	// Log how many items were processed during shutdown
+	d.logger.Info("Completed processing remaining items during shutdown",
+		zap.Int("high_priority_processed", highCount),
+		zap.Int("normal_priority_processed", normalCount),
+		zap.Int("low_priority_processed", lowCount))
+
+	// Signal all goroutines to terminate after queue processing
 	d.cancel()
-	// Drain queues...
-	d.drainQueue(d.highPriorityQueue)
-	d.drainQueue(d.normalQueue)
-	d.drainQueue(d.lowPriorityQueue)
+
+	d.stateMgr.SetState(P2PDistributorStateType, state.Stopped)
 }
 
-// drainQueue empties a queue without processing items
-func (d *P2PDistributor) drainQueue(queue chan *RecordBatch) {
+// processRemainingQueue processes all remaining items in the queue before shutdown
+// Returns the count of processed items
+func (d *P2PDistributor) processRemainingQueue(queue chan *RecordBatch) int {
+	count := 0
+
+	// Use a timeout to avoid blocking forever during shutdown
+	timeout := time.After(5 * time.Second) // Longer timeout to allow for processing
+
 	for {
 		select {
-		case <-queue:
-			// Just discard items
+		case batch := <-queue:
+			if batch == nil {
+				continue
+			}
+
+			// Process this batch (write to database)
+			d.logger.Debug("Processing queued batch during shutdown",
+				zap.Int("record_count", len(batch.Records)))
+
+			// Write directly to DB using optimized BatchWriter
+			batchWriter := d.node.batchWriter
+			for _, record := range batch.Records {
+				if err := batchWriter.BufferWrite(record.Key, record.Value); err != nil {
+					d.logger.Error(
+						"Failed to write record during shutdown",
+						zap.Error(err),
+						zap.ByteString("key", record.Key[:]),
+					)
+				}
+			}
+
+			count++
+
+		case <-timeout:
+			// Return if we've been trying for too long
+			d.logger.Warn("Shutdown processing timed out, some items may not be processed")
+			return count
+
 		default:
-			return // Queue empty
+			// Queue is empty, all items processed
+			return count
 		}
 	}
 }
@@ -161,7 +216,6 @@ func (d *P2PDistributor) processQueue(queue chan *RecordBatch, interval time.Dur
 
 // processPendingBatches attempts to combine and process multiple batches
 func (d *P2PDistributor) processPendingBatches(queue chan *RecordBatch) {
-	// Skip if queue is empty
 	if len(queue) == 0 {
 		return
 	}
@@ -349,7 +403,6 @@ func (d *P2PDistributor) distributeToAllPeers(batch *RecordBatch) {
 	}
 
 	for _, peer := range peers {
-		// Skip self
 		if peer == d.node.network.Host().ID() {
 			continue
 		}
@@ -451,112 +504,6 @@ func (d *P2PDistributor) distributeToPeer(targetPeer peer.ID, records []db.Write
 	d.stats.mu.Unlock()
 }
 
-// createRecordBatchPacket serializes a batch of records into a network packet
-func (d *P2PDistributor) createRecordBatchPacket(records []db.WriteRequest) ([]byte, error) {
-	// Convert to a protocol-specific format
-	recordBatch := packets.RecordBatch{
-		Records: make([]packets.Record, len(records)),
-	}
-
-	for i, record := range records {
-		recordBatch.Records[i] = packets.Record{
-			Key:   record.Key,
-			Value: record.Value,
-		}
-	}
-
-	// Serialize the batch
-	batchData, err := recordBatch.Serialize()
-	if err != nil {
-		return nil, err
-	}
-
-	// Create a network packet with the record batch payload
-	networkPacket := packets.NetworkPacket{
-		Type:    packets.RecordBatchType,
-		Payload: batchData,
-	}
-
-	// If account is available, sign the packet
-	if d.node.account != nil {
-		signedData, err := networkPacket.SerializeWithoutSignature()
-		if err != nil {
-			return nil, fmt.Errorf("failed to serialize packet for signing: %w", err)
-		}
-
-		// Use the account to sign the data directly
-		signature, err := d.node.account.Sign(signedData)
-		if err != nil {
-			return nil, fmt.Errorf("failed to sign record batch packet: %w", err)
-		}
-
-		// Set the signature and public key in the network packet
-		networkPacket.Signature = signature
-
-		// Get the raw public key data
-		pubKeyBytes, err := d.node.account.MarshalPublicKey()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get public key bytes: %w", err)
-		}
-		networkPacket.SignaturePubKey = pubKeyBytes
-	}
-
-	// Serialize the network packet
-	return networkPacket.Serialize()
-}
-
-// HandleRecordBatchPacket processes incoming record batches from the network
-func (d *P2PDistributor) HandleRecordBatchPacket(ctx context.Context, packet *packets.NetworkPacket, sender peer.ID) error {
-	start := time.Now()
-
-	// Log receipt
-	d.logger.Debug("Received record batch packet",
-		zap.String("from_peer", sender.String()),
-		zap.Int("payload_size", len(packet.Payload)))
-
-	// Deserialize the record batch
-	recordBatch, err := packets.DeserializeRecordBatch(packet.Payload)
-	if err != nil {
-		d.logger.Error("Failed to deserialize record batch", zap.Error(err))
-		return err
-	}
-
-	// Log batch info
-	d.logger.Info("Processing incoming record batch",
-		zap.String("from_peer", sender.String()),
-		zap.Int("record_count", len(recordBatch.Records)))
-
-	// Buffer directly into the node's writer
-	for _, record := range recordBatch.Records {
-		// Skip empty records
-		if len(record.Value) == 0 {
-			continue
-		}
-
-		err := d.node.batchWriter.BufferWrite(record.Key, record.Value)
-		if err != nil {
-			d.logger.Error("Failed to buffer received record",
-				zap.Error(err),
-				zap.Binary("key_prefix", record.Key[:8]))
-		}
-	}
-
-	processingTime := time.Since(start)
-	d.stats.mu.Lock()
-	d.stats.RecordsDistributed += int64(len(recordBatch.Records))
-	d.stats.AverageLatencyMs = (d.stats.AverageLatencyMs + processingTime.Milliseconds()) / 2
-	d.stats.mu.Unlock()
-
-	d.logger.Debug(
-		"Successfully processed record batch",
-		zap.String("from_peer", sender.String()),
-		zap.Int("record_count", len(recordBatch.Records)),
-		zap.Duration("processing_time", processingTime),
-	)
-
-	return nil
-}
-
 // handlePubSubMessages processes incoming PubSub messages from the gossip network
 func (d *P2PDistributor) handlePubSubMessages(sub *pubsub.Subscription) {
 	d.logger.Info("Starting PubSub message handler")
@@ -567,41 +514,41 @@ func (d *P2PDistributor) handlePubSubMessages(sub *pubsub.Subscription) {
 			d.logger.Info("Stopping PubSub message handler")
 			return
 		default:
-			// Receive messages from the subscription
 			msg, err := sub.Next(d.ctx)
 			if err != nil {
-				if err == context.Canceled || err == context.DeadlineExceeded {
+				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 					return // Context canceled, exit gracefully
 				}
+
 				d.logger.Error("Error receiving PubSub message", zap.Error(err))
 				continue
 			}
 
-			// Skip messages from self
 			if msg.ReceivedFrom == d.node.network.Host().ID() {
 				d.logger.Debug("Skipping PubSub message from self")
 				continue
 			}
 
-			d.logger.Debug("Received PubSub message",
+			d.logger.Debug(
+				"Received PubSub message",
 				zap.String("from", msg.ReceivedFrom.String()),
-				zap.Int("data_size", len(msg.Data)))
+				zap.Int("data_size", len(msg.Data)),
+			)
 
-			// Deserialize the network packet
 			networkPacket, err := packets.DeserializeNetworkPacket(msg.Data)
 			if err != nil {
 				d.logger.Error("Failed to deserialize PubSub network packet", zap.Error(err))
 				continue
 			}
 
-			// Process only RecordBatch type packets
-			if networkPacket.Type == packets.RecordBatchType {
+			switch networkPacket.Type {
+			case packets.RecordBatchType:
 				// Handle the record batch packet using our existing handler
 				err = d.HandleRecordBatchPacket(d.ctx, networkPacket, msg.ReceivedFrom)
 				if err != nil {
 					d.logger.Error("Failed to process PubSub RecordBatch", zap.Error(err))
 				}
-			} else {
+			default:
 				d.logger.Debug("Ignoring non-RecordBatch PubSub message",
 					zap.String("packet_type", networkPacket.Type.String()))
 			}
