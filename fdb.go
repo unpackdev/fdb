@@ -3,6 +3,8 @@ package fdb
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/pkg/errors"
 	"github.com/unpackdev/fdb/accounts"
 	"github.com/unpackdev/fdb/config"
@@ -11,30 +13,29 @@ import (
 	"github.com/unpackdev/fdb/node"
 	"github.com/unpackdev/fdb/observability"
 	"github.com/unpackdev/fdb/pprof"
+	"github.com/unpackdev/fdb/protocols/rpc"
 	"github.com/unpackdev/fdb/rbac"
 	"github.com/unpackdev/fdb/state"
 	"github.com/unpackdev/fdb/transports"
-	transport_dummy "github.com/unpackdev/fdb/transports/dummy"
-	transport_quic "github.com/unpackdev/fdb/transports/quic"
-	transport_tcp "github.com/unpackdev/fdb/transports/tcp"
-	transport_udp "github.com/unpackdev/fdb/transports/udp"
-	transport_uds "github.com/unpackdev/fdb/transports/uds"
 	"github.com/unpackdev/fdb/types"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )
 
 type FDB struct {
-	ctx      context.Context
-	config   config.Config
-	obs      *observability.Observability
-	tm       *transports.Manager
-	dbMgr    *db.Manager
-	rbacMgr  *rbac.Manager
-	store    *accounts.Store
-	account  *accounts.Account
-	stateMgr *state.StateManager
-	dNode    *node.Node
+	ctx         context.Context
+	config      config.Config
+	logger      logger.Logger
+	obs         *observability.Observability
+	tm          *transports.Manager
+	dbMgr       *db.Manager
+	rbacMgr     *rbac.Manager
+	store       *accounts.Store
+	account     *accounts.Account
+	stateMgr    *state.StateManager
+	dNode       *node.Node
+	rpcSvc      *rpc.RPC
+	batchWriter *db.BatchWriter
 }
 
 func New(ctx context.Context, cfg config.Config) (*FDB, error) {
@@ -58,7 +59,7 @@ func New(ctx context.Context, cfg config.Config) (*FDB, error) {
 	}
 
 	// Create a new transport manager
-	transportManager := transports.NewManager()
+	tManager := transports.NewManager()
 
 	dbM, dbmErr := db.NewManager(ctx, cfg.Mdbx)
 	if dbmErr != nil {
@@ -93,74 +94,122 @@ func New(ctx context.Context, cfg config.Config) (*FDB, error) {
 		return nil, errors.Wrap(smErr, "failure to create new global state manager")
 	}
 
+	// Create a new BatchWriter with a batch size of 512 and flush interval of 1 second
+	dbI, dbiErr := dbM.GetDb("fdb")
+	if dbiErr != nil {
+		return nil, fmt.Errorf("failed to get database instance: %w", dbiErr)
+	}
+
+	batchWriter := db.NewBatchWriter(dbI.(*db.Db), 2048, 100*time.Millisecond, 15)
+
 	// Node is basically a wrapper around consensus, chain, identity management, peer system and peer discovery system.
 	// Not to forget metrics and ping-pong game between peers to establish metrics baseline.
 	// Construction is done here because other services might need it.
 	// In this state, block producer callback is not set.
 	// Sequencer will be setting up block producer callback and utilize it.
-	dNode, dnErr := node.NewNode(ctx, cfg, rbacMgr, zLog, store, obs, stateMgr)
+	dNode, dnErr := node.NewNode(ctx, cfg, rbacMgr, zLog, store, obs, stateMgr, dbM, batchWriter)
 	if dnErr != nil {
 		return nil, errors.Wrap(dnErr, "failed to initialize node")
 	}
 
+	rpcSvc, riErr := rpc.NewRPC(ctx, cfg.Rpc, zLog, obs, stateMgr)
+	if riErr != nil {
+		return nil, fmt.Errorf("failed to initialize RPC: %w", riErr)
+	}
+
 	fdbInstance := &FDB{
-		ctx:      ctx,
-		config:   cfg,
-		obs:      obs,
-		tm:       transportManager,
-		dbMgr:    dbM,
-		rbacMgr:  rbacMgr,
-		store:    store,
-		account:  account,
-		stateMgr: stateMgr,
-		dNode:    dNode,
+		ctx:         ctx,
+		config:      cfg,
+		logger:      zLog,
+		obs:         obs,
+		tm:          tManager,
+		dbMgr:       dbM,
+		rbacMgr:     rbacMgr,
+		store:       store,
+		account:     account,
+		stateMgr:    stateMgr,
+		dNode:       dNode,
+		rpcSvc:      rpcSvc,
+		batchWriter: batchWriter,
 	}
 
 	for _, transport := range cfg.Transports {
-		switch t := transport.Config.(type) {
-		case *config.DummyTransport:
-			udsServer, err := transport_dummy.NewDummyServer(ctx, *t)
-			if err != nil {
-				return nil, errors.Wrap(err, "failed to create dummy server")
-			}
-			if err := transportManager.RegisterTransport(types.DummyTransportType, udsServer); err != nil {
-				return nil, errors.Wrap(err, "failed to register UDS transport")
-			}
-		case *config.QuicTransport:
-			quicServer, err := transport_quic.NewServer(ctx, *t)
-			if err != nil {
-				return nil, errors.Wrap(err, "failed to create QUIC server")
-			}
-			if err := transportManager.RegisterTransport(types.QUICTransportType, quicServer); err != nil {
-				return nil, errors.Wrap(err, "failed to register QUIC transport")
-			}
+		transportFn, tnOk := tRegistry[transport.Config.GetTransportType()]
+		if !tnOk {
+			return nil, fmt.Errorf("unknown transport type provided: %v - rejecting serving transports", transport)
+		}
 
-		case *config.UdsTransport:
-			udsServer, err := transport_uds.NewServer(ctx, *t)
-			if err != nil {
-				return nil, errors.Wrap(err, "failed to create UDS server")
-			}
-			if err := transportManager.RegisterTransport(types.UDSTransportType, udsServer); err != nil {
-				return nil, errors.Wrap(err, "failed to register UDS transport")
-			}
-		case *config.TcpTransport:
-			tcpServer, err := transport_tcp.NewServer(ctx, *t, zLog, obs)
-			if err != nil {
-				return nil, errors.Wrap(err, "failed to create TCP server")
-			}
-			if err := transportManager.RegisterTransport(types.TCPTransportType, tcpServer); err != nil {
-				return nil, errors.Wrap(err, "failed to register TCP transport")
-			}
-		case *config.UdpTransport:
-			udpServer, err := transport_udp.NewServer(ctx, *t)
-			if err != nil {
-				return nil, errors.Wrap(err, "failed to create UDP server")
-			}
-			if err := transportManager.RegisterTransport(types.UDPTransportType, udpServer); err != nil {
-				return nil, errors.Wrap(err, "failed to register UDP transport")
-			}
-		default:
-			return nil, fmt.Errorf("unknown transport type provided: %v", t.GetTransportType())
+		iTransport, itErr := transportFn(fdbInstance, transport.Config, dbI)
+		if itErr != nil {
+			return nil, errors.Wrapf(itErr, "failure to create transport: %s", transport.Config.GetTransportType())
+		}
+
+		if err := tManager.RegisterTransport(transport.Config.GetTransportType(), iTransport); err != nil {
+			return nil, errors.Wrapf(err, "failed to register transport: %s", transport.Config.GetTransportType())
+		}
+	}
+
+	return fdbInstance, nil
+}
+
+func NewWithArgs(
+	ctx context.Context, cfg config.Config, logger logger.Logger,
+	obs *observability.Observability, tManager *transports.Manager, dbM *db.Manager,
+	rbacMgr *rbac.Manager, store *accounts.Store, stateMgr *state.StateManager, rpcSvc *rpc.RPC) (*FDB, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, errors.Wrap(err, "failure to validate (f)db configuration")
+	}
+
+	// Attempt to load the identity from the manager using the PeerID
+	// TODO: Perhaps even this should be outside as an argument. For now keeping it as is to keep things sane.
+	account, err := store.GetByPeerID(cfg.Networking.PeerID)
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to load account from identity manager with PeerID: %s", cfg.Networking.PeerID)
+	}
+
+	// Create a new BatchWriter with a batch size of 512 and flush interval of 1 second
+	dbI, dbiErr := dbM.GetDb("fdb")
+	if dbiErr != nil {
+		return nil, fmt.Errorf("failed to get database instance: %w", dbiErr)
+	}
+
+	batchWriter := db.NewBatchWriter(dbI.(*db.Db), 2048, 100*time.Millisecond, 15)
+
+	// Create a new node
+	dNode, err := node.NewNode(ctx, cfg, rbacMgr, logger, store, obs, stateMgr, dbM, batchWriter)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize node: %w", err)
+	}
+
+	fdbInstance := &FDB{
+		ctx:         ctx,
+		config:      cfg,
+		logger:      logger,
+		obs:         obs,
+		tm:          tManager,
+		dbMgr:       dbM,
+		rbacMgr:     rbacMgr,
+		store:       store,
+		account:     account,
+		stateMgr:    stateMgr,
+		rpcSvc:      rpcSvc,
+		dNode:       dNode,
+		batchWriter: batchWriter,
+	}
+
+	for _, transport := range cfg.Transports {
+		transportFn, tnOk := tRegistry[transport.Config.GetTransportType()]
+		if !tnOk {
+			return nil, fmt.Errorf("unknown transport type provided: %v - rejecting serving transports", transport)
+		}
+
+		iTransport, itErr := transportFn(fdbInstance, transport.Config, dbI)
+		if itErr != nil {
+			return nil, errors.Wrapf(itErr, "failure to create transport: %s", transport.Config.GetTransportType())
+		}
+
+		if err := tManager.RegisterTransport(transport.Config.GetTransportType(), iTransport); err != nil {
+			return nil, errors.Wrapf(err, "failed to register transport: %s", transport.Config.GetTransportType())
 		}
 	}
 
@@ -169,11 +218,6 @@ func New(ctx context.Context, cfg config.Config) (*FDB, error) {
 
 func (fdb *FDB) Start(ctx context.Context, transports ...types.TransportType) error {
 	g, gCtx := errgroup.WithContext(ctx)
-
-	bDb, err := fdb.GetDbManager().GetDb("fdb")
-	if err != nil {
-		return fmt.Errorf("failed to retrieve fdb database: %w", err)
-	}
 
 	pCfg, pcErr := fdb.config.GetPprofByServiceTag("fdb")
 	if pcErr != nil {
@@ -186,25 +230,21 @@ func (fdb *FDB) Start(ctx context.Context, transports ...types.TransportType) er
 		})
 	}
 
-	for _, transport := range transports {
-		transportFn, tnOk := tRegistry[transport]
-		if !tnOk {
-			return fmt.Errorf("unknown transport type provided: %v - rejecting serving transports", transport)
-		}
-
-		iTransport, itErr := transportFn(fdb, bDb)
-		if itErr != nil {
-			return errors.Wrapf(itErr, "failure to create transport: %s", transport)
-		}
-
+	for _, transport := range fdb.tm.GetTransports() {
 		g.Go(func() error {
-			return iTransport.Start(gCtx)
+			return transport.Start(ctx)
 		})
 	}
 
 	g.Go(func() error {
 		return fdb.dNode.Start()
 	})
+
+	if fdb.rpcSvc != nil {
+		g.Go(func() error {
+			return fdb.rpcSvc.Start(gCtx)
+		})
+	}
 
 	if gErr := g.Wait(); gErr != nil {
 		return errors.Wrap(gErr, "failure to start fdb database")
@@ -224,6 +264,12 @@ func (fdb *FDB) Stop(transports ...types.TransportType) error {
 		}
 
 		if err := t.Stop(); err != nil {
+			return err
+		}
+	}
+
+	if fdb.rpcSvc != nil {
+		if err := fdb.rpcSvc.Stop(); err != nil {
 			return err
 		}
 	}

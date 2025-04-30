@@ -4,6 +4,7 @@ package http
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"github.com/goccy/go-json"
 	"github.com/unpackdev/fdb/logger"
 	"github.com/unpackdev/fdb/transports/tcp"
@@ -44,7 +45,7 @@ func (h *TrafficHandler) Handle(ctx *tcp.ConnectionContext, conn gnet.Conn) gnet
 	// Use http.ReadRequest to parse the request
 	req, err := http.ReadRequest(reader)
 	if err != nil {
-		if err == io.EOF || err == io.ErrUnexpectedEOF {
+		if err == io.EOF || errors.Is(err, io.ErrUnexpectedEOF) {
 			h.logger.Debug("Incomplete HTTP request received; waiting for more data")
 			return gnet.None
 		}

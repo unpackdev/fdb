@@ -14,6 +14,7 @@ const (
 	TCPSuiteType   SuiteType = "tcp"
 	UDPSuiteType   SuiteType = "udp"
 	DummySuiteType SuiteType = "dummy"
+	CapnpSuiteType SuiteType = "capnp" // New Cap'n Proto benchmarking suite
 )
 
 // ErrInvalidSuiteType is returned when an unsupported SuiteType is provided.

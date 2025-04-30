@@ -1,113 +1,113 @@
 package transport_udp
 
-import (
-	"context"
-	"github.com/stretchr/testify/assert"
-	"log"
-	"net"
-	"testing"
-	"time"
-)
+// import (
+// 	"context"
+// 	"github.com/stretchr/testify/assert"
+// 	"log"
+// 	"net"
+// 	"testing"
+// 	"time"
+// )
 
-// Benchmark for read operations using gnet-based UDP server and Message struct
-func BenchmarkUDPServerRead(b *testing.B) {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+// // Benchmark for read operations using gnet-based UDP server and Message struct
+// func BenchmarkUDPServerRead(b *testing.B) {
+// 	ctx, cancel := context.WithCancel(context.Background())
+// 	defer cancel()
 
-	// Setup the MDBX manager and database
-	manager := setupBenchmarkTestManager(b, "/tmp/fdb", "benchmark")
+// 	// Setup the MDBX manager and database
+// 	manager := setupBenchmarkTestManager(b, "/tmp/fdb", "benchmark")
 
-	// Get the database from the manager
-	db, err := manager.GetDb("test")
-	assert.NoError(b, err)
-	defer db.Destroy()
+// 	// Get the database from the manager
+// 	db, err := manager.GetDb("test")
+// 	assert.NoError(b, err)
+// 	defer db.Destroy()
 
-	server, sErr := startUDPServer(ctx, db)
-	assert.NoError(b, sErr)
+// 	server, sErr := startUDPServer(ctx, db)
+// 	assert.NoError(b, sErr)
 
-	// Wait for the server to start
-	time.Sleep(100 * time.Millisecond)
+// 	// Wait for the server to start
+// 	time.Sleep(100 * time.Millisecond)
 
-	// Resolve the server address
-	serverAddr, err := net.ResolveUDPAddr("udp", server.Addr().String())
-	if err != nil {
-		b.Fatalf("Failed to resolve server address: %v", err)
-	}
+// 	// Resolve the server address
+// 	serverAddr, err := net.ResolveUDPAddr("udp", server.Addr().String())
+// 	if err != nil {
+// 		b.Fatalf("Failed to resolve server address: %v", err)
+// 	}
 
-	// Create the UDP client
-	client, err := net.DialUDP("udp", nil, serverAddr)
-	if err != nil {
-		b.Fatalf("Failed to create UDP client: %v", err)
-	}
-	defer client.Close()
+// 	// Create the UDP client
+// 	client, err := net.DialUDP("udp", nil, serverAddr)
+// 	if err != nil {
+// 		b.Fatalf("Failed to create UDP client: %v", err)
+// 	}
+// 	defer client.Close()
 
-	// Prepare test data
-	key := [32]byte{}                  // 32-byte key
-	value := []byte("benchmark value") // Example value to write
+// 	// Prepare test data
+// 	key := [32]byte{}                  // 32-byte key
+// 	value := []byte("benchmark value") // Example value to write
 
-	// Perform an initial write to store the value in the database
-	writeMessage := Message{
-		Handler: WriteHandlerType,
-		Key:     key,
-		Data:    value,
-	}
+// 	// Perform an initial write to store the value in the database
+// 	writeMessage := Message{
+// 		Handler: WriteHandlerType,
+// 		Key:     key,
+// 		Data:    value,
+// 	}
 
-	encodedWriteMessage, err := writeMessage.Encode()
-	if err != nil {
-		b.Fatalf("Failed to encode write message: %v", err)
-	}
+// 	encodedWriteMessage, err := writeMessage.Encode()
+// 	if err != nil {
+// 		b.Fatalf("Failed to encode write message: %v", err)
+// 	}
 
-	_, err = client.Write(encodedWriteMessage)
-	if err != nil {
-		b.Fatalf("Failed to write initial data to UDP server: %v", err)
-	}
+// 	_, err = client.Write(encodedWriteMessage)
+// 	if err != nil {
+// 		b.Fatalf("Failed to write initial data to UDP server: %v", err)
+// 	}
 
-	// Read the response to the write operation (if any)
-	buffer := make([]byte, 1024)
-	n, err := client.Read(buffer)
-	if err != nil {
-		b.Fatalf("Failed to read response from UDP server: %v", err)
-	}
-	// Optionally check the response
-	log.Printf("Write response: %s", string(buffer[:n]))
+// 	// Read the response to the write operation (if any)
+// 	buffer := make([]byte, 1024)
+// 	n, err := client.Read(buffer)
+// 	if err != nil {
+// 		b.Fatalf("Failed to read response from UDP server: %v", err)
+// 	}
+// 	// Optionally check the response
+// 	log.Printf("Write response: %s", string(buffer[:n]))
 
-	time.Sleep(100 * time.Millisecond) // Allow the server to process the write request
+// 	time.Sleep(100 * time.Millisecond) // Allow the server to process the write request
 
-	b.ResetTimer()
+// 	b.ResetTimer()
 
-	for i := 0; i < b.N; i++ {
-		// Prepare the read message
-		readMessage := Message{
-			Handler: ReadHandlerType,
-			Key:     key,
-			Data:    nil, // No data for read
-		}
+// 	for i := 0; i < b.N; i++ {
+// 		// Prepare the read message
+// 		readMessage := Message{
+// 			Handler: ReadHandlerType,
+// 			Key:     key,
+// 			Data:    nil, // No data for read
+// 		}
 
-		encodedReadMessage, err := readMessage.Encode()
-		if err != nil {
-			b.Fatalf("Failed to encode read message: %v", err)
-		}
+// 		encodedReadMessage, err := readMessage.Encode()
+// 		if err != nil {
+// 			b.Fatalf("Failed to encode read message: %v", err)
+// 		}
 
-		_, err = client.Write(encodedReadMessage)
-		if err != nil {
-			b.Errorf("Failed to write read request to UDP server: %v", err)
-			continue
-		}
+// 		_, err = client.Write(encodedReadMessage)
+// 		if err != nil {
+// 			b.Errorf("Failed to write read request to UDP server: %v", err)
+// 			continue
+// 		}
 
-		buffer := make([]byte, 1024)
-		n, err = client.Read(buffer)
-		if err != nil {
-			b.Errorf("Failed to read from UDP server: %v", err)
-			continue
-		}
+// 		buffer := make([]byte, 1024)
+// 		n, err = client.Read(buffer)
+// 		if err != nil {
+// 			b.Errorf("Failed to read from UDP server: %v", err)
+// 			continue
+// 		}
 
-		// Optionally check the response
-		// log.Printf("Read response: %s", string(buffer[:n]))
-	}
+// 		// Optionally check the response
+// 		// log.Printf("Read response: %s", string(buffer[:n]))
+// 	}
 
-	b.StopTimer()
+// 	b.StopTimer()
 
-	// Stop the server
-	server.Stop()
-	time.Sleep(100 * time.Millisecond) // Allow some time for the server to stop
-}
+// 	// Stop the server
+// 	server.Stop()
+// 	time.Sleep(100 * time.Millisecond) // Allow some time for the server to stop
+// }

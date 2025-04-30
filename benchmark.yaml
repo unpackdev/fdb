@@ -1,8 +1,14 @@
+# ======================================================================================
+# LOGGER RELATED CONFIGURATIONS
+# ======================================================================================
 logger:
   enabled: true
   environment: development
   level: debug
 
+# ======================================================================================
+# MDBX RELATED CONFIGURATIONS
+# ======================================================================================
 mdbx:
   enabled: true
   nodes:
@@ -15,17 +21,31 @@ mdbx:
     filePermissions: 0600    # File permissions for the database
 
 # ======================================================================================
+# NODE RELATED CONFIGURATION
+# ======================================================================================
+node:
+  # In blockchain world there is full node, light node, sequencer, validator, etc...
+  # This is practically the same concept have RBAC (Role-Based Access Control) and
+  # that is how node types are defined. Reusing this system to not pollute the system with
+  # multiple nodes and role types and making things even more confusing than it is.
+  roles:
+    - node
+    - sequencer
+    - validator
+
+
+# ======================================================================================
 # IDENTITY MANAGER RELATED CONFIGURATION
 # ======================================================================================
 # Identity manager is responsible for generating P2P, BLS, and other keys.
 identity:
   enabled: true  # Enable or disable the identity manager.
-  basePath: /Users/nevio/.fdb/keystore  # Directory where keys are stored.
+  basePath: /Users/nevio/.fdb/keystore  # Path where keys are stored.
   # Optional: List keys manually if needed.
-  # keys:
+  # Keys:
   #   - name: node-key
   #     type: bls  # Example types: bls, ecdsa, frost.
-  #     path: /path/to/key/file
+  #     Path: /path/to/key/file
 
 # ======================================================================================
 # P2P NETWORKING RELATED CONFIGURATION
@@ -43,8 +63,11 @@ networking:
   bootstrapNode: true                        # Set to true if this node is the bootstrap node in the network.
   mdns: true                                 # Enable or disable Multicast DNS (mDNS) discovery.
   enableRelay: true                          # Enable relay connections if needed.
-  interface_name: "en0"                  # Network interface name for eBPF (if applicable)
+  interface_name: "en0"                      # Network interface name for eBPF (if applicable)
 
+# ======================================================================================
+# TRANSPORTS RELATED CONFIGURATIONS
+# ======================================================================================
 transports:
   - type: dummy
     enabled: true
@@ -86,3 +109,34 @@ transports:
         insecure: true
         key: ./data/certs/key.pem
         cert: ./data/certs/cert.pem
+
+# ======================================================================================
+# RPC RELATED CONFIGURATIONS
+# ======================================================================================
+rpc:
+  poolMaxSize: 10_000
+  transport:
+    enabled: true
+    type: "tcp"
+    ipv4: 0.0.0.0
+    port: 8845
+
+# ======================================================================================
+# OBSERVABILITY CONFIGURATION (Metrics and Tracing)
+# ======================================================================================
+# Observability helps in monitoring system health, performance, and errors.
+# It includes metrics (Prometheus) and tracing (OpenTelemetry).
+observability:
+  metrics:
+    enable: true  # Enable or disable metrics collection.
+    endpoint: "0.0.0.0:4317"  # Endpoint for metrics collector.
+    exportInterval: 15s  # Interval to export metrics data.
+    useTLS: false  # Set this to false to disable TLS.
+
+  tracing:
+    enable: true  # Enable or disable tracing.
+    endpoint: "0.0.0.0:4317"  # Endpoint for tracing collector.
+    headers: {}  # Additional headers for tracing requests.
+    sampler: "always_on"  # Options: always_on, probability.
+    samplingRate: 0.1  # Sampling rate for probabilistic sampling.
+    useTLS: false  # Set this to false to disable TLS.

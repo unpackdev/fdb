@@ -2,8 +2,11 @@ package node
 
 import (
 	"context"
+
+	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/unpackdev/fdb/accounts"
 	"github.com/unpackdev/fdb/config"
+	"github.com/unpackdev/fdb/db"
 	"github.com/unpackdev/fdb/logger"
 	"github.com/unpackdev/fdb/metrics"
 	"github.com/unpackdev/fdb/networking"
@@ -13,32 +16,39 @@ import (
 	"github.com/unpackdev/fdb/state"
 	"github.com/unpackdev/fdb/topology"
 
-	"github.com/pkg/errors"
 	"time"
+
+	"github.com/pkg/errors"
 
 	"go.uber.org/zap"
 )
 
 // Node encapsulates all components of a PeerDNS node.
 type Node struct {
-	logger    logger.Logger
-	ctx       context.Context
-	cancel    context.CancelFunc
-	cfg       config.Config
-	obs       *observability.Observability
-	rbacMgr   *rbac.Manager
-	store     *accounts.Store
-	account   *accounts.Account
-	network   *networking.Network
-	collector *metrics.Collector
-	pm        *metrics.PerformanceMonitor
-	stateMgr  *state.StateManager
-	actors    *share.ActorSet
-	topology  *topology.Topology
+	logger      logger.Logger
+	ctx         context.Context
+	cancel      context.CancelFunc
+	cfg         config.Config
+	obs         *observability.Observability
+	rbacMgr     *rbac.Manager
+	store       *accounts.Store
+	account     *accounts.Account
+	network     *networking.Network
+	collector   *metrics.Collector
+	pm          *metrics.PerformanceMonitor
+	stateMgr    *state.StateManager
+	actors      *share.ActorSet
+	topology    *topology.Topology
+	dbM         *db.Manager
+	batchWriter *db.BatchWriter
+	distributor *P2PDistributor // P2P record distribution component
 }
 
 // NewNode initializes and returns a new Node.
-func NewNode(ctx context.Context, config config.Config, rbacMgr *rbac.Manager, logger logger.Logger, store *accounts.Store, obs *observability.Observability, stateMgr *state.StateManager) (*Node, error) {
+func NewNode(
+	ctx context.Context, config config.Config, rbacMgr *rbac.Manager, logger logger.Logger,
+	store *accounts.Store, obs *observability.Observability, stateMgr *state.StateManager,
+	dbM *db.Manager, batchWriter *db.BatchWriter) (*Node, error) {
 	// Create a child context for the node
 	nodeCtx, cancel := context.WithCancel(ctx)
 
@@ -151,79 +161,121 @@ func NewNode(ctx context.Context, config config.Config, rbacMgr *rbac.Manager, l
 		return nil, errors.Wrap(tErr, "failure to create new topology management system")
 	}
 
+	// Create a node instance with all components
+	node := &Node{
+		logger:      logger,
+		ctx:         nodeCtx,
+		cancel:      cancel,
+		cfg:         config,
+		obs:         obs,
+		rbacMgr:     rbacMgr,
+		store:       store,
+		account:     account,
+		network:     ntwrk,
+		collector:   collector,
+		pm:          performanceMonitor,
+		stateMgr:    stateMgr,
+		actors:      actors,
+		topology:    topologyManager,
+		dbM:         dbM,
+		batchWriter: batchWriter,
+	}
+
+	// Initialize the P2P distributor with a reasonable batch size
+	node.distributor = NewP2PDistributor(node, 2048)
+
 	// Set the state to Initialized after successful node creation.
 	stateMgr.SetState(NodeStateType, state.Initialized)
 
-	return &Node{
-		store:     store,
-		account:   account,
-		cfg:       config,
-		obs:       obs,
-		rbacMgr:   rbacMgr,
-		network:   ntwrk,
-		collector: collector,
-		pm:        performanceMonitor,
-		logger:    logger,
-		ctx:       nodeCtx,
-		cancel:    cancel,
-		stateMgr:  stateMgr,
-		actors:    actors,
-		topology:  topologyManager,
-	}, nil
+	return node, nil
 }
 
+// Store returns the node's account store.
 func (n *Node) Store() *accounts.Store {
 	return n.store
 }
 
+// Account returns the node's account.
 func (n *Node) Account() *accounts.Account {
 	return n.account
 }
 
+// StateManager returns the node's state manager.
 func (n *Node) StateManager() *state.StateManager {
 	return n.stateMgr
 }
 
+// Discovery returns the node's discovery service.
 func (n *Node) Discovery() *networking.DiscoveryService {
 	return n.network.Discovery()
 }
 
+// Collector returns the node's metrics collector.
 func (n *Node) Collector() *metrics.Collector {
 	return n.collector
 }
 
+// PerformanceMonitor returns the node's performance monitor.
 func (n *Node) PerformanceMonitor() *metrics.PerformanceMonitor {
 	return n.pm
 }
 
+// Network returns the node's network.
 func (n *Node) Network() *networking.Network {
 	return n.network
 }
 
+// ActorSet returns the node's actor set.
 func (n *Node) ActorSet() *share.ActorSet {
 	return n.actors
 }
 
+// Topology returns the node's topology.
 func (n *Node) Topology() *topology.Topology {
 	return n.topology
 }
 
+// Observability returns the node's observability.
 func (n *Node) Observability() *observability.Observability {
 	return n.obs
 }
 
+// RbacManager returns the node's RBAC manager.
 func (n *Node) RbacManager() *rbac.Manager {
 	return n.rbacMgr
 }
 
-// Start begins the node's operations.
+// Distributor returns the node's P2P distributor component
+func (n *Node) Distributor() *P2PDistributor {
+	return n.distributor
+}
+
+// DistributeRecord adds a record to be distributed across the P2P network
+func (n *Node) DistributeRecord(key [32]byte, value []byte) error {
+	return n.distributor.DistributeRecord(key, value, PriorityNormal, TargetAll)
+}
+
+// DistributeRecordWithPriority adds a record with specified priority and target
+func (n *Node) DistributeRecordWithPriority(key [32]byte, value []byte, priority Priority, target Target) error {
+	return n.distributor.DistributeRecord(key, value, priority, target)
+}
+
+// DistributeRecordToPeer sends a record directly to a specific peer
+func (n *Node) DistributeRecordToPeer(key [32]byte, value []byte, peerID peer.ID) error {
+	return n.distributor.DistributeRecordToPeer(key, value, peerID, PriorityNormal)
+}
+
 func (n *Node) Start() error {
 	n.logger.Info("Starting node")
 	n.stateMgr.SetState(NodeStateType, state.Starting)
 
 	if err := n.network.Start(); err != nil {
-		return errors.Wrap(err, "failure to start P2P network")
+		n.stateMgr.SetState(NodeStateType, state.Failed)
+		return errors.Wrap(err, "failed to start network")
 	}
+
+	// Start the P2P distributor
+	n.distributor.Start()
 
 	// Start a goroutine to continuously advertise the node until its advertised
 	// Genesis node when started won't have any peers to connect.

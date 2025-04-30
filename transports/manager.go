@@ -2,6 +2,7 @@ package transports
 
 import (
 	"errors"
+
 	"github.com/unpackdev/fdb/types"
 
 	"github.com/sasha-s/go-deadlock"
@@ -41,6 +42,12 @@ func (tm *Manager) GetTransport(tType types.TransportType) (Transport, error) {
 	}
 
 	return transport, nil
+}
+
+func (tm *Manager) GetTransports() map[types.TransportType]Transport {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+	return tm.transports
 }
 
 func (tm *Manager) DeregisterTransport(tType types.TransportType) error {

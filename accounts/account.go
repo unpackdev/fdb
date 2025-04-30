@@ -175,5 +175,31 @@ func (a *Account) ExtraPermissions() map[types.Role][]types.Permission {
 }
 
 func (a *Account) MarshalPublicKey() ([]byte, error) {
-	return libp2pCrypto.MarshalPublicKey(a.masterPublicKey)
+	return a.masterPublicKey.Raw()
+}
+
+// Sign signs the provided data using the account's master private key
+func (a *Account) Sign(data []byte) ([]byte, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	
+	if a.masterPrivateKey == nil {
+		return nil, errors.New("no master private key available for signing")
+	}
+	
+	// Use the libp2p private key to sign the data
+	return a.masterPrivateKey.Sign(data)
+}
+
+// Verify checks if the signature is valid for the given data using the account's master public key
+func (a *Account) Verify(data []byte, signature []byte) (bool, error) {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	
+	if a.masterPublicKey == nil {
+		return false, errors.New("no master public key available for verification")
+	}
+	
+	// Use the libp2p public key to verify the signature
+	return a.masterPublicKey.Verify(data, signature)
 }

@@ -84,10 +84,25 @@ func (bw *BatchWriter) runWorker(workerID int) {
 }
 
 // BufferWrite adds a key-value pair to the batch and writes it to the worker's dedicated channel.
-func (bw *BatchWriter) BufferWrite(key [32]byte, value []byte) {
-	// Determine which worker to assign the write to (for simplicity, we can use modulo)
-	workerID := int(key[0]) % bw.workers
-	bw.workerChannels[workerID] <- WriteRequest{Key: key, Value: value}
+func (bw *BatchWriter) BufferWrite(key [32]byte, value []byte) error {
+	// Use a more sophisticated hash distribution for better worker assignment
+	// XOR the first and last bytes for slightly better distribution
+	workerID := int(key[0]^key[31]) % bw.workers
+	
+	// Use non-blocking send to prevent backpressure
+	select {
+	case bw.workerChannels[workerID] <- WriteRequest{Key: key, Value: value}:
+		// Successfully sent to channel
+		return nil
+	default:
+		// Channel is full, handle gracefully by using a goroutine to avoid blocking
+		// This helps during high-load scenarios to prevent caller blocking
+		go func() {
+			// This will block in the goroutine but not block the caller
+			bw.workerChannels[workerID] <- WriteRequest{Key: key, Value: value}
+		}()
+		return nil
+	}
 }
 
 // flush writes the buffered key-value pairs to the MDBX database in a single transaction for a given worker.
@@ -128,4 +143,15 @@ func (bw *BatchWriter) flush(workerID int) {
 func (bw *BatchWriter) FlushAndStop() {
 	// Signal all workers to stop
 	close(bw.stopChannel)
+}
+
+// Flush immediately flushes all pending writes across all workers.
+// This is useful for testing when you need to ensure data is persisted.
+func (bw *BatchWriter) Flush() {
+	// Flush all workers
+	for i := 0; i < bw.workers; i++ {
+		bw.workerMutexes[i].Lock()
+		bw.flush(i)
+		bw.workerMutexes[i].Unlock()
+	}
 }

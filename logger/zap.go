@@ -2,8 +2,9 @@ package logger
 
 import (
 	"errors"
-	"github.com/unpackdev/fdb/config"
 	"strings"
+
+	"github.com/unpackdev/fdb/config"
 
 	"go.uber.org/zap"
 )
@@ -71,4 +72,8 @@ func (z *ZapLogger) Error(msg string, keysAndValues ...any) {
 
 func (z *ZapLogger) Fatal(msg string, keysAndValues ...any) {
 	z.sugaredLogger.Fatalw(msg, keysAndValues...)
+}
+
+func (z *ZapLogger) Inner() *zap.SugaredLogger {
+	return z.sugaredLogger
 }

@@ -77,5 +77,12 @@ else
 	rm -f $(BIN_NAME)
 endif
 
+# Cap'n Proto code generation
+.PHONY: capnp
+capnp: ## Generate Go code from Cap'n Proto schemas
+	@echo "Generating Cap'n Proto code..."
+	@export PATH=$$PATH:$$HOME/go/bin && \
+	capnp compile -I `go list -m -f '{{.Dir}}' capnproto.org/go/capnp/v3`/std -ogo protocols/capn/schema/db.capnp
+
 # eBPF-specific commands wrapped under ebpf namespace
 .PHONY: ebpf-build ebpf-load ebpf-unload ebpf-clean

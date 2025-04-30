@@ -2,10 +2,11 @@ package db
 
 import (
 	"context"
-	"github.com/unpackdev/fdb/config"
-	"github.com/unpackdev/fdb/errors"
 	"os"
 	"testing"
+
+	"github.com/unpackdev/fdb/config"
+	"github.com/unpackdev/fdb/errors"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -26,8 +27,11 @@ func setupTestManager(t *testing.T) *Manager {
 	assert.NoError(t, err)
 
 	// Create options for the database
-	opts := config.MdbxNodes{
-		{Path: path, Name: "test"},
+	opts := config.Mdbx{
+		Enabled: true,
+		Nodes: []config.MdbxNode{
+			{Path: path, Name: "test"},
+		},
 	}
 
 	// Initialize Manager
@@ -52,8 +56,11 @@ func setupBenchmarkTestManager(b *testing.B, dbPath string, dbName string) *Mana
 	assert.NoError(b, err, "Failed to create database directory")
 
 	// Create options for the database
-	opts := config.MdbxNodes{
-		{Path: dbPath, Name: dbName},
+	opts := config.Mdbx{
+		Enabled: true,
+		Nodes: []config.MdbxNode{
+			{Path: dbPath, Name: dbName},
+		},
 	}
 
 	// Initialize the Manager

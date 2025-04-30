@@ -2,13 +2,16 @@ package transport_uds
 
 import (
 	"context"
+	"os"
+	"time"
+
 	"github.com/panjf2000/gnet"
 	"github.com/pkg/errors"
 	"github.com/unpackdev/fdb/config"
+	"github.com/unpackdev/fdb/logger"
+	"github.com/unpackdev/fdb/observability"
 	"github.com/unpackdev/fdb/types"
 	"go.uber.org/zap"
-	"os"
-	"time"
 )
 
 // UDSHandler function type for UDS handlers
@@ -25,7 +28,7 @@ type Server struct {
 }
 
 // NewServer creates a new UDS Server instance using the provided configuration
-func NewServer(ctx context.Context, cnf config.UdsTransport) (*Server, error) {
+func NewServer(ctx context.Context, cnf config.UdsTransport, logger logger.Logger, obs *observability.Observability) (*Server, error) {
 	// Remove the existing socket file if it exists
 	if _, err := os.Stat(cnf.Socket); err == nil {
 		if rmErr := os.Remove(cnf.Socket); rmErr != nil {

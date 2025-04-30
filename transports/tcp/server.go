@@ -3,18 +3,20 @@ package tcp
 
 import (
 	"context"
+
 	"github.com/unpackdev/fdb/transports"
+
+	"io"
+	"net"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/sasha-s/go-deadlock"
 	"github.com/unpackdev/fdb/config"
 	"github.com/unpackdev/fdb/logger"
 	"github.com/unpackdev/fdb/observability"
 	"github.com/unpackdev/fdb/types"
-	"io"
-	"net"
-	"strings"
-	"sync"
-	"time"
 
 	"github.com/panjf2000/gnet/v2"
 	"github.com/pkg/errors"
@@ -290,7 +292,7 @@ func (s *Server) OnTraffic(c gnet.Conn) (action gnet.Action) {
 		return gnet.None
 	}
 
-	//s.logger.Debug("On traffic reached...", "handler", handlerType, "data", data)
+	s.logger.Debug("ON TRAFFIC REACHED...", "handler", handlerType, "data", data)
 
 	// Retrieve the handler
 	s.mu.RLock()

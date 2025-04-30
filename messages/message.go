@@ -4,8 +4,9 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"fmt"
-	"github.com/unpackdev/fdb/types"
 	"io"
+
+	"github.com/unpackdev/fdb/types"
 )
 
 // Message struct represents a UDP message
@@ -96,7 +97,7 @@ func Decode(data []byte) (*Message, error) {
 
 // GenerateRandomMessage generates a Message with a random handler and key, and no data.
 func GenerateRandomMessage(handler types.HandlerType) (*Message, error) {
-	key, err := generateRandomKey()
+	key, err := GenerateRandomKey()
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +111,7 @@ func GenerateRandomMessage(handler types.HandlerType) (*Message, error) {
 
 // GenerateRandomMessageWithData generates a Message with a key, and a specified data payload.
 func GenerateRandomMessageWithData(handler types.HandlerType, data []byte) (*Message, error) {
-	key, err := generateRandomKey()
+	key, err := GenerateRandomKey()
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +124,7 @@ func GenerateRandomMessageWithData(handler types.HandlerType, data []byte) (*Mes
 }
 
 // Helper function to generate a random 32-byte key.
-func generateRandomKey() ([32]byte, error) {
+func GenerateRandomKey() ([32]byte, error) {
 	var key [32]byte
 	_, err := io.ReadFull(rand.Reader, key[:])
 	if err != nil {

@@ -131,4 +131,7 @@ const (
 	PacketTypeBlockResponse     PacketType = 26
 	PacketTypePeerStateRequest  PacketType = 27
 	PacketTypePeerStateResponse PacketType = 28
+
+	// Record distribution packets
+	RecordBatchType             PacketType = 30 // Batch of database records for P2P distribution
 )

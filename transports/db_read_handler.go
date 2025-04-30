@@ -1,8 +1,9 @@
 package transports
 
 import (
-	"github.com/unpackdev/fdb/db"
 	"log"
+
+	"github.com/unpackdev/fdb/db"
 )
 
 // TCPReadHandler struct with MDBX database passed in
