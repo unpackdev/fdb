@@ -226,12 +226,12 @@ func TestP2PLoadDistribution(t *testing.T) {
 		waitTime       time.Duration // Time to wait after writing all records
 	}{
 		{
-			name:           "Small records (100 × 50B)",
-			numRecords:     100,
+			name:           "Small records (300 × 50B)",
+			numRecords:     300,
 			payloadSize:    50,
 			payloadType:    "string",
 			sampleInterval: 10, // Verify every 10th record
-			waitTime:       500 * time.Millisecond,
+			waitTime:       100 * time.Millisecond,
 		},
 		// {
 		// 	name:           "Medium batch (1000 × 200B)",

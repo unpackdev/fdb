@@ -41,11 +41,6 @@ node:
 identity:
   enabled: true  # Enable or disable the identity manager.
   basePath: /Users/nevio/.fdb/keystore  # Path where keys are stored.
-  # Optional: List keys manually if needed.
-  # Keys:
-  #   - name: node-key
-  #     type: bls  # Example types: bls, ecdsa, frost.
-  #     Path: /path/to/key/file
 
 # ======================================================================================
 # P2P NETWORKING RELATED CONFIGURATION
