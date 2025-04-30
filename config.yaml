@@ -70,13 +70,13 @@ networking:
 # ======================================================================================
 transports:
   - type: dummy
-    enabled: true
+    enabled: false
     config:
       ipv4: 127.0.0.1
       port: 4434
 
   - type: quic
-    enabled: true
+    enabled: false
     config:
       ipv4: 127.0.0.1
       port: 4433
@@ -86,7 +86,7 @@ transports:
         cert: ./data/certs/cert.pem
 
   - type: uds
-    enabled: true
+    enabled: false
     config:
       socket: "/tmp/fdb.sock"
 
@@ -101,7 +101,7 @@ transports:
         cert: ./data/certs/cert.pem
 
   - type: udp
-    enabled: true
+    enabled: false
     config:
       ipv4: 127.0.0.1
       port: 5022
@@ -120,6 +120,14 @@ rpc:
     type: "tcp"
     ipv4: 0.0.0.0
     port: 8845
+
+# ======================================================================================
+# OBSERVABILITY CONFIGURATION (Metrics and Tracing)
+# ======================================================================================
+pprof:
+  - name: fdb
+    enabled: true
+    endpoint: "0.0.0.0:6060"
 
 # ======================================================================================
 # OBSERVABILITY CONFIGURATION (Metrics and Tracing)

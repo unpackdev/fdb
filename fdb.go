@@ -134,6 +134,10 @@ func New(ctx context.Context, cfg config.Config) (*FDB, error) {
 	}
 
 	for _, transport := range cfg.Transports {
+		if !transport.Enabled {
+			continue
+		}
+
 		transportFn, tnOk := tRegistry[transport.Config.GetTransportType()]
 		if !tnOk {
 			return nil, fmt.Errorf("unknown transport type provided: %v - rejecting serving transports", transport)
@@ -198,6 +202,10 @@ func NewWithArgs(
 	}
 
 	for _, transport := range cfg.Transports {
+		if !transport.Enabled {
+			continue
+		}
+
 		transportFn, tnOk := tRegistry[transport.Config.GetTransportType()]
 		if !tnOk {
 			return nil, fmt.Errorf("unknown transport type provided: %v - rejecting serving transports", transport)
