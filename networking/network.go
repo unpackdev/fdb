@@ -6,9 +6,13 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+
 	"github.com/libp2p/go-libp2p/p2p/discovery/mdns"
 
 	"github.com/unpackdev/fdb/accounts"
+
+	"io"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/sasha-s/go-deadlock"
@@ -17,8 +21,6 @@ import (
 	"github.com/unpackdev/fdb/observability"
 	"github.com/unpackdev/fdb/packets"
 	"github.com/unpackdev/fdb/state"
-	"io"
-	"time"
 
 	pubsub "github.com/libp2p/go-libp2p-pubsub"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -257,7 +259,8 @@ func (n *Network) handleStream(s network.Stream) {
 		return
 	}
 
-	reader := bufio.NewReader(s)
+	// Use a larger buffer size (32MB) to handle large payloads
+	reader := bufio.NewReaderSize(s, 32*1024*1024)
 
 	for {
 		// Read the length prefix
@@ -299,7 +302,7 @@ func (n *Network) handleStream(s network.Stream) {
 					zap.Error(vfErr),
 					zap.String("from_peer", peerID.String()),
 					zap.String("packet_type", networkPacket.Type.String()),
-					zap.ByteString("payload", networkPacket.Payload),
+					zap.Int("payload_size", len(networkPacket.Payload)),
 				)
 				return
 			}
@@ -416,12 +419,12 @@ func (n *Network) SendMessage(ctx context.Context, protocolId protocol.ID, targe
 		return fmt.Errorf("failed to write message: %w", err)
 	}
 
-	n.Logger.Debug(
-		"Sent P2P message",
-		zap.String("to_peer", target.String()),
-		zap.Any("protocol", protocolId),
-		zap.ByteString("message", message),
-	)
+	// n.Logger.Debug(
+	// 	"Sent P2P message",
+	// 	zap.String("to_peer", target.String()),
+	// 	zap.Any("protocol", protocolId),
+	// 	zap.ByteString("message", message),
+	// )
 	n.Metrics.RecordMessagesSent(ctx, 1)
 	n.Metrics.RecordMessageLatency(ctx, time.Since(startTime))
 
@@ -438,7 +441,7 @@ func (n *Network) BroadcastMessage(message []byte) error {
 		return fmt.Errorf("failed to broadcast message: %w", err)
 	}
 
-	n.Logger.Info("Broadcasted message", zap.ByteString("message", message))
+	//n.Logger.Info("Broadcasted message", zap.ByteString("message", message))
 	n.Metrics.RecordMessagesSent(n.ctx, 1)
 	n.Metrics.RecordMessageLatency(n.ctx, time.Since(startTime))
 

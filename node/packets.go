@@ -25,11 +25,25 @@ func (d *P2PDistributor) createRecordBatchPacket(records []db.WriteRequest) ([]b
 		}
 	}
 
+	// Calculate total payload size for logging
+	totalValueSize := 0
+	for _, record := range records {
+		totalValueSize += len(record.Value)
+	}
+
+	d.logger.Debug("Creating record batch packet",
+		zap.Int("record_count", len(records)),
+		zap.Int("total_value_size", totalValueSize))
+
 	// Serialize the batch
 	batchData, err := recordBatch.Serialize()
 	if err != nil {
+		d.logger.Error("Failed to serialize record batch", zap.Error(err))
 		return nil, err
 	}
+
+	d.logger.Debug("Serialized record batch",
+		zap.Int("serialized_size", len(batchData)))
 
 	// Create a network packet with the record batch payload
 	networkPacket := packets.NetworkPacket{
@@ -41,14 +55,22 @@ func (d *P2PDistributor) createRecordBatchPacket(records []db.WriteRequest) ([]b
 	if d.node.account != nil {
 		signedData, err := networkPacket.SerializeWithoutSignature()
 		if err != nil {
+			d.logger.Error("Failed to serialize packet for signing", zap.Error(err))
 			return nil, fmt.Errorf("failed to serialize packet for signing: %w", err)
 		}
+
+		d.logger.Debug("Serialized packet for signing",
+			zap.Int("data_to_sign_size", len(signedData)))
 
 		// Use the account to sign the data directly
 		signature, err := d.node.account.Sign(signedData)
 		if err != nil {
+			d.logger.Error("Failed to sign record batch packet", zap.Error(err))
 			return nil, fmt.Errorf("failed to sign record batch packet: %w", err)
 		}
+
+		d.logger.Debug("Generated signature",
+			zap.Int("signature_size", len(signature)))
 
 		// Set the signature and public key in the network packet
 		networkPacket.Signature = signature
@@ -56,13 +78,29 @@ func (d *P2PDistributor) createRecordBatchPacket(records []db.WriteRequest) ([]b
 		// Get the raw public key data
 		pubKeyBytes, err := d.node.account.MarshalPublicKey()
 		if err != nil {
+			d.logger.Error("Failed to marshal public key", zap.Error(err))
 			return nil, fmt.Errorf("failed to get public key bytes: %w", err)
 		}
+
+		d.logger.Debug("Marshaled public key",
+			zap.Int("pubkey_size", len(pubKeyBytes)))
+
 		networkPacket.SignaturePubKey = pubKeyBytes
 	}
 
 	// Serialize the network packet
-	return networkPacket.Serialize()
+	finalPacket, err := networkPacket.Serialize()
+	if err != nil {
+		d.logger.Error("Failed to serialize final network packet", zap.Error(err))
+		return nil, err
+	}
+
+	d.logger.Debug("Final serialized packet",
+		zap.Int("final_packet_size", len(finalPacket)),
+		zap.Bool("has_signature", networkPacket.Signature != nil),
+		zap.Bool("has_pubkey", networkPacket.SignaturePubKey != nil))
+
+	return finalPacket, nil
 }
 
 // HandleRecordBatchPacket processes incoming record batches from the network

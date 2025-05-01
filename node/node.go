@@ -48,14 +48,12 @@ type Node struct {
 func NewNode(
 	ctx context.Context, config config.Config, rbacMgr *rbac.Manager, logger logger.Logger,
 	store *accounts.Store, obs *observability.Observability, stateMgr *state.StateManager,
-	dbM *db.Manager, batchWriter *db.BatchWriter) (*Node, error) {
-	// Create a child context for the node
+	dbM *db.Manager, batchWriter *db.BatchWriter,
+) (*Node, error) {
 	nodeCtx, cancel := context.WithCancel(ctx)
 
-	// Set initial state as Uninitialized
 	stateMgr.SetState(NodeStateType, state.Uninitialized)
 
-	// Ensure the PeerID is set in the configuration
 	if config.Networking.PeerID == "" {
 		logger.Error("PeerID not provided in the networking configuration")
 		cancel()
@@ -119,12 +117,7 @@ func NewNode(
 		return nil, err
 	}
 
-	// Initialize sharding
-	//shardManager := sharding.NewShardManager(config.Sharding.ShardCount, logger)
-
 	// Initialize metrics collector with default weights
-	// This thing here is used to decide (including with staking...) the leader of the consensus
-	// whenever it is sequencer or validator.
 	// @TODO: These weights severely needs to be researched later on
 	weights := share.Metrics{
 		BandwidthUsage: 0.0,

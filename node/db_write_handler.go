@@ -63,7 +63,14 @@ func (wh *DbWriteHandler) Handle(conn transports.Connection, frame []byte) {
 	copy(key[:], frame[offset+1:offset+33]) // Copy directly from frame, accounting for offset
 
 	// The remaining part is the value (from byte offset+33 onwards)
-	value := frame[offset+33+3:]
+	value := frame[offset+33:]
+
+	// Add detailed logging for debugging large payload issues
+	wh.logger.Debug("Received write request",
+		zap.Int("frame_size", len(frame)),
+		zap.Int("value_size", len(value)),
+		zap.Int("offset", offset),
+		zap.Binary("key_prefix", key[:4]))
 
 	// Buffer the write request with the key as [32]byte
 	err := wh.writer.BufferWrite(key, value)

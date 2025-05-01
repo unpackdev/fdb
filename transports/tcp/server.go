@@ -92,7 +92,7 @@ func (s *Server) Start(ctx context.Context) error {
 	// Prepare gnet options
 	options := []gnet.Option{
 		gnet.WithMulticore(true),
-		gnet.WithSocketRecvBuffer(1024 * 64),
+		gnet.WithSocketRecvBuffer(1024 * 256), // Increased from 64KB to 256KB for larger payloads
 		gnet.WithLockOSThread(true),
 		gnet.WithTicker(true),
 		//gnet.WithTCPNoDelay(1),

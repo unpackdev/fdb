@@ -86,7 +86,7 @@ func NewP2PDistributor(node *Node, batchSize int) *P2PDistributor {
 	return &P2PDistributor{
 		node:              node,
 		batchSize:         batchSize,
-		bufferPool:        &sync.Pool{New: func() any { return make([]byte, 64*1024) }},
+		bufferPool:        &sync.Pool{New: func() any { return make([]byte, 32*1024*1024) }}, // 32MB buffer to handle large payloads
 		stats:             &DistributionStats{},
 		highPriorityQueue: make(chan *RecordBatch, 1000),
 		normalQueue:       make(chan *RecordBatch, 10000),
@@ -106,6 +106,11 @@ func (d *P2PDistributor) Start() error {
 	// Register handlers for incoming P2P record batches via direct protocols
 	d.node.network.HandlerRegistry().RegisterHandler(packets.RecordBatchType, d.HandleRecordBatchPacket)
 	d.logger.Info("Registered handler for direct RecordBatch messages")
+
+	// Register a special handler for the bulk protocol (used for large transfers)
+	bulkProtocolID := protocol.ID(string(d.node.network.ProtocolID) + BulkProtocolSuffix)
+	d.node.network.Host().SetStreamHandler(bulkProtocolID, d.HandleBulkStream)
+	d.logger.Info("Registered handler for bulk transfers", zap.String("protocol", string(bulkProtocolID)))
 
 	// Create subscription to the PubSub topic
 	sub, err := d.node.network.Topic.Subscribe()
@@ -476,12 +481,18 @@ func (d *P2PDistributor) distributeToPeer(targetPeer peer.ID, records []db.Write
 
 	// Choose protocol based on batch size
 	protocolID := d.node.network.ProtocolID
-	if len(packet) > 100*1024 {
-		// For large batches, use the bulk protocol
+	if len(packet) > 4*1024 {
+		// For batches larger than 4KB, use the bulk protocol
+		d.logger.Debug("Using bulk protocol for large packet",
+			zap.Int("packet_size", len(packet)),
+			zap.String("peer", targetPeer.String()))
 		bulkProtocolID := protocol.ID(string(protocolID) + BulkProtocolSuffix)
 		err = d.node.network.SendToPeer(d.ctx, targetPeer, bulkProtocolID, packet)
 	} else {
 		// For smaller batches, use the standard protocol
+		d.logger.Debug("Using standard protocol for small packet",
+			zap.Int("packet_size", len(packet)),
+			zap.String("peer", targetPeer.String()))
 		err = d.node.network.SendMessage(d.ctx, protocolID, targetPeer, packet)
 	}
 

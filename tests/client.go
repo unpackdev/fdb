@@ -1,7 +1,10 @@
 package tests
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"time"
 
@@ -95,7 +98,7 @@ func (t *TestNode) SendAndReceiveMessage(targetNode *TestNode, transportType typ
 	defer client.Close()
 
 	var encodedMsg []byte
-	
+
 	// Check if data is already a properly encoded Message
 	// Try to decode it as a Message to see if it's valid
 	_, decodeErr := messages.Decode(data)
@@ -108,7 +111,7 @@ func (t *TestNode) SendAndReceiveMessage(targetNode *TestNode, transportType typ
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate message: %w", err)
 		}
-		
+
 		// Encode the message
 		encodedMsg, err = msg.Encode()
 		if err != nil {
@@ -116,8 +119,12 @@ func (t *TestNode) SendAndReceiveMessage(targetNode *TestNode, transportType typ
 		}
 	}
 
-	// Set read deadline based on timeout
-	if err := client.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+	// Set read deadline based on timeout - but use at least 5 seconds for large payloads
+	readTimeout := timeout
+	if readTimeout < 5*time.Second {
+		readTimeout = 5 * time.Second
+	}
+	if err := client.SetReadDeadline(time.Now().Add(readTimeout)); err != nil {
 		return nil, fmt.Errorf("failed to set read deadline: %w", err)
 	}
 
@@ -134,23 +141,121 @@ func (t *TestNode) SendAndReceiveMessage(targetNode *TestNode, transportType typ
 		zap.Int("bytes", len(encodedMsg)),
 		zap.String("to", client.RemoteAddr().String()))
 
-	// Allocate buffer to read response
-	// Using a reasonably sized buffer that should handle most responses
-	responseBuf := make([]byte, 4096)
+	// Allocate a larger buffer to read responses - big enough for large payloads
+	// 256KB buffer ensures we can handle even larger payloads than 65KB
+	bufSize := 256 * 1024 
+	buf := make([]byte, bufSize) 
+	var responseBuf bytes.Buffer
 
-	// Read the response from the server
-	n, err := client.Read(responseBuf)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
+	// Use a generous overall timeout for the entire operation
+	baseTimeout := 5 * time.Second
+	if timeout > baseTimeout {
+		baseTimeout = timeout
+	}
+	
+	// Deadline for the entire operation 
+	operationDeadline := time.Now().Add(baseTimeout)
+	
+	// Set overall deadline
+	if err := client.SetDeadline(operationDeadline); err != nil {
+		return nil, fmt.Errorf("failed to set operation deadline: %w", err)
+	}
+
+	// Track our reading progress
+	totalBytesRead := 0
+	lastReadSize := 0
+	noProgressCount := 0
+	
+	// Read in a loop until we get EOF or timeout
+	for {
+		// Update how much time we have left for this read
+		timeRemaining := operationDeadline.Sub(time.Now())
+		if timeRemaining <= 0 {
+			break // Total operation timeout reached
+		}
+		
+		// Set timeout for this specific read operation
+		readTimeout := 500 * time.Millisecond
+		if timeRemaining < readTimeout {
+			readTimeout = timeRemaining
+		}
+		client.SetReadDeadline(time.Now().Add(readTimeout))
+
+		// Try reading into our buffer
+		n, err := client.Read(buf)
+		
+		// Check for progress (debugging for stuck reads)
+		if n == lastReadSize {
+			noProgressCount++
+			if noProgressCount > 5 {
+				t.logger.Debug("No new data after multiple reads", 
+					zap.Int("total_received", totalBytesRead))
+				break // Assume we're done if we keep getting the same amount of data
+			}
+		} else {
+			noProgressCount = 0
+			lastReadSize = n
+		}
+
+		// If we read something, add it to our result buffer
+		if n > 0 {
+			totalBytesRead += n
+			responseBuf.Write(buf[:n])
+			t.logger.Debug("Read chunk of data", 
+				zap.Int("chunk_bytes", n), 
+				zap.Int("total_bytes", totalBytesRead))
+		}
+
+		// Handle different read outcomes
+		if err != nil {
+			// EOF means we reached the end of data cleanly
+			if errors.Is(err, io.EOF) {
+				t.logger.Debug("Received EOF", zap.Int("total_bytes", totalBytesRead))
+				break
+			}
+
+			// Handle timeout - could mean we're done or server is slow
+			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				// If we have some data but hit a timeout, we might be done
+				if totalBytesRead > 0 {
+					t.logger.Debug("Read timeout with data", zap.Int("total_bytes", totalBytesRead))
+					
+					// If we've read more than 64KB, we're likely done with large payloads
+					// This helps with boundary cases when the server doesn't properly signal EOF
+					if totalBytesRead > 65*1024 {
+						break
+					}
+					
+					// Otherwise, try another read
+					continue
+				} else {
+					// No data at all means server may be unresponsive
+					return nil, fmt.Errorf("timeout waiting for server response")
+				}
+			}
+
+			// For any other error, return it
+			return nil, fmt.Errorf("failed to read response: %w", err)
+		}
+		
+		// If we filled our read buffer completely, continue immediately to read more
+		// Otherwise, a short read with no error might mean we're at the end
+		if n < bufSize {
+			// Short read with no error - means we got all available data
+			t.logger.Debug("Short read with no error, likely complete", 
+				zap.Int("read_size", n), 
+				zap.Int("buffer_size", bufSize))
+			break
+		}
 	}
 
 	latency := time.Since(start)
 
 	t.logger.Debug("Received response",
-		zap.Int("bytes", n),
+		zap.Int("bytes", responseBuf.Len()),
 		zap.String("from", client.RemoteAddr().String()),
 		zap.Duration("latency", latency))
 
-	// Return actual data read
-	return responseBuf[:n], nil
+	// Return the complete data from the buffer
+	return responseBuf.Bytes(), nil
 }

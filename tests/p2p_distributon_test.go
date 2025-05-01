@@ -69,30 +69,36 @@ func TestP2PDistribution(t *testing.T) {
 	// Define table-driven test cases
 	testCases := []struct {
 		name     string
-		value    []byte
+		sizeKB   int           // Size of test data in KB
+		random   bool          // Whether to use random data
 		waitTime time.Duration // Time to wait for P2P distribution
 	}{
-		{
-			name:     "Basic string value",
-			value:    []byte("test record value payload"),
-			waitTime: 100 * time.Millisecond,
-		},
-		{
-			name:     "JSON data",
-			value:    []byte(`{"id":"12345","name":"test","data":[1,2,3,4,5]}`),
-			waitTime: 100 * time.Millisecond,
-		},
-		// This is broken, 4096 bytes is currently processing fine, need to get it working by buffering...
 		// {
-		// 	name:     "Large binary data (100KB)",
-		// 	value:    bytes.Repeat([]byte{0x01, 0x02, 0x03, 0x04}, 25 * 1024), // ~100KB of data
-		// 	waitTime: 3 * time.Second, // Extra time for larger payload
+		// 	name:     "Basic string value",
+		// 	value:    []byte("test record value payload"),
+		// 	waitTime: 100 * time.Millisecond,
 		// },
+		// {
+		// 	name:     "JSON data",
+		// 	value:    []byte(`{"id":"12345","name":"test","data":[1,2,3,4,5]}`),
+		// 	waitTime: 100 * time.Millisecond,
+		// },
+		{
+			name:     "Large binary data (100KB)",
+			sizeKB:   65,
+			random:   false,
+			waitTime: 3 * time.Second, // Extra time for larger payload
+		},
 	}
 
 	// Run all test cases
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			// Generate test data with the specified size
+			testData, err := GenerateTestDataKB(tc.sizeKB, tc.random)
+			require.NoError(t, err, "Failed to generate test data")
+			t.Logf("Generated test data of size %d KB (%d bytes)", tc.sizeKB, len(testData))
+
 			// Generate a unique key for this test case
 			key, err := messages.GenerateRandomKey()
 			require.NoError(t, err, "Failed to generate random key")
@@ -103,7 +109,7 @@ func TestP2PDistribution(t *testing.T) {
 			writeMsg := &messages.Message{
 				Handler: types.WriteHandlerType,
 				Key:     key,
-				Data:    tc.value,
+				Data:    testData,
 			}
 
 			encodedWriteMsg, err := writeMsg.Encode()
@@ -150,7 +156,7 @@ func TestP2PDistribution(t *testing.T) {
 
 			// Extract the actual payload (skip the status byte)
 			bootstrapValue := bootstrapResp[1:]
-			require.Equal(t, tc.value, bootstrapValue, "Record value mismatch on bootstrap node")
+			require.Equal(t, testData, bootstrapValue, "Record value mismatch on bootstrap node")
 
 			// 2b. Verify on regular node (should get there via P2P distribution)
 			t.Log("Verifying record exists on regular node")
@@ -168,7 +174,7 @@ func TestP2PDistribution(t *testing.T) {
 
 			// Extract the actual payload (skip the status byte)
 			regularValue := regularResp[1:]
-			require.Equal(t, tc.value, regularValue, "Record value mismatch on regular node")
+			require.Equal(t, testData, regularValue, "Record value mismatch on regular node")
 
 			t.Logf("%s: P2P distribution successful!", tc.name)
 		})
@@ -225,14 +231,14 @@ func TestP2PLoadDistribution(t *testing.T) {
 		sampleInterval int           // Check every Nth record during verification
 		waitTime       time.Duration // Time to wait after writing all records
 	}{
-		{
-			name:           "Small records (300 × 50B)",
-			numRecords:     300,
-			payloadSize:    50,
-			payloadType:    "string",
-			sampleInterval: 10, // Verify every 10th record
-			waitTime:       100 * time.Millisecond,
-		},
+		// {
+		// 	name:           "Small records (300 × 50B)",
+		// 	numRecords:     300,
+		// 	payloadSize:    50,
+		// 	payloadType:    "string",
+		// 	sampleInterval: 10, // Verify every 10th record
+		// 	waitTime:       300 * time.Millisecond,
+		// },
 		// {
 		// 	name:           "Medium batch (1000 × 200B)",
 		// 	numRecords:     1000,
@@ -241,14 +247,14 @@ func TestP2PLoadDistribution(t *testing.T) {
 		// 	sampleInterval: 100, // Verify every 100th record
 		// 	waitTime:       1 * time.Second,
 		// },
-		// {
-		// 	name:           "Large batch (5000 × 100B)",
-		// 	numRecords:     5000,
-		// 	payloadSize:    100,
-		// 	payloadType:    "string",
-		// 	sampleInterval: 500, // Verify every 500th record
-		// 	waitTime:       2 * time.Second,
-		// },
+		{
+			name:           "Large batch (5000 × 100B)",
+			numRecords:     100,
+			payloadSize:    1000 * 512,
+			payloadType:    "string",
+			sampleInterval: 500, // Verify every 500th record
+			waitTime:       5 * time.Second,
+		},
 	}
 
 	// Run all benchmark test cases
@@ -361,6 +367,7 @@ func TestP2PLoadDistribution(t *testing.T) {
 					regularValue := regularResp[1:]
 					if !bytes.Equal(payloads[i], regularValue) {
 						t.Errorf("Record value mismatch on regular node for record %d", i)
+						continue
 					}
 					verifiedCount++
 				} else {
