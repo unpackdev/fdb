@@ -68,7 +68,7 @@ func NewTopology(ctx context.Context, logger logger.Logger, account share.Accoun
 		actorSet:      actorSet,
 		peerEventChan: peerEventChan,
 	}
-	
+
 	// Initialize and integrate topology metrics
 	err := integrateTopologyMetrics(t, collector)
 	if err != nil {
@@ -162,12 +162,12 @@ func (t *Topology) HandleActorPacket(ctx context.Context, msg *packets.NetworkPa
 func (t *Topology) WaitForPeer(ctx context.Context, targetPeerID peer.ID, timeout time.Duration) error {
 	// Start timing the wait operation
 	startTime := time.Now()
-	
+
 	// Record the wait operation start
 	if t.actors != nil && t.actors.topologyMetrics != nil {
 		t.actors.topologyMetrics.RecordWaitOperation(ctx, 1, "peer")
 	}
-	
+
 	// Create a context with timeout if not already set
 	if _, ok := ctx.Deadline(); !ok && timeout > 0 { // Changed 'deadline' to '_'
 		var cancel context.CancelFunc
@@ -202,7 +202,7 @@ func (t *Topology) WaitForPeer(ctx context.Context, targetPeerID peer.ID, timeou
 				}
 				t.actors.topologyMetrics.RecordWaitOperationLatency(ctx, time.Since(startTime), "peer")
 			}
-			
+
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				return ErrTimeoutExceeded
 			}
@@ -215,12 +215,12 @@ func (t *Topology) WaitForPeer(ctx context.Context, targetPeerID peer.ID, timeou
 func (t *Topology) WaitForPeers(ctx context.Context, timeout time.Duration) error {
 	// Start timing the wait operation
 	startTime := time.Now()
-	
+
 	// Record the wait operation start
 	if t.actors != nil && t.actors.topologyMetrics != nil {
 		t.actors.topologyMetrics.RecordWaitOperation(ctx, 1, "any_peer")
 	}
-	
+
 	// Create a context with timeout if not already set
 	if _, ok := ctx.Deadline(); !ok && timeout > 0 { // Changed 'deadline' to '_'
 		var cancel context.CancelFunc
@@ -255,7 +255,7 @@ func (t *Topology) WaitForPeers(ctx context.Context, timeout time.Duration) erro
 				}
 				t.actors.topologyMetrics.RecordWaitOperationLatency(ctx, time.Since(startTime), "any_peer")
 			}
-			
+
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				return ErrTimeoutExceeded
 			}
@@ -300,12 +300,12 @@ func (t *Topology) WaitForPeersWithRole(ctx context.Context, role types.Role, ti
 func (t *Topology) WaitForPeersWithRoles(ctx context.Context, roles []types.Role, timeout time.Duration) error {
 	// Start timing the wait operation
 	startTime := time.Now()
-	
+
 	// Record the wait operation start
 	if t.actors != nil && t.actors.topologyMetrics != nil {
 		t.actors.topologyMetrics.RecordWaitOperation(ctx, 1, "peers_with_roles")
 	}
-	
+
 	// Create a context with timeout if not already set
 	if _, ok := ctx.Deadline(); !ok && timeout > 0 { // Changed 'deadline' to '_'
 		var cancel context.CancelFunc
@@ -340,7 +340,7 @@ func (t *Topology) WaitForPeersWithRoles(ctx context.Context, roles []types.Role
 				}
 				t.actors.topologyMetrics.RecordWaitOperationLatency(ctx, time.Since(startTime), "peers_with_roles")
 			}
-			
+
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				return ErrTimeoutExceeded
 			}

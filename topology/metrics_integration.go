@@ -2,7 +2,6 @@
 package topology
 
 import (
-	"context"
 	"github.com/pkg/errors"
 	"github.com/unpackdev/fdb/metrics"
 	"go.opentelemetry.io/otel/metric"
@@ -21,7 +20,7 @@ func integrateTopologyMetrics(t *Topology, _ *metrics.Collector) error {
 	if t.network == nil {
 		return errors.New("network not initialized")
 	}
-	
+
 	obs := t.network.Observability
 	if obs == nil {
 		return errors.New("observability not initialized in network")
@@ -39,10 +38,4 @@ func integrateTopologyMetrics(t *Topology, _ *metrics.Collector) error {
 	}
 
 	return nil
-}
-
-// This function simulates the RecordMetrics method that would be called regularly or on events
-func (t *Topology) recordMetrics(ctx context.Context) {
-	// Record any topology-specific metrics here
-	// This could be called periodically to capture metrics not tied to specific events
 }
