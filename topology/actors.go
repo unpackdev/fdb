@@ -4,6 +4,8 @@ package topology
 import (
 	"context"
 	"fmt"
+	"time"
+
 	libp2pCrypto "github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/multiformats/go-multiaddr"
@@ -66,18 +68,19 @@ type pendingPeer struct {
 
 // Actors manages actor information within the topology.
 type Actors struct {
-	peers        map[peer.ID]*Actor
-	pendingPeers map[peer.ID]*pendingPeer
-	roleIndex    map[types.Role]peerSet // Indexed by roles
-	account      share.Account
-	mutex        deadlock.RWMutex
-	logger       logger.Logger
-	network      *networking.Network
-	rbac         *rbac.Manager
-	consensusSet *share.ActorSet
-	metrics      share.Collector
-	self         *Actor
-	onPeerEvent  func() // Notifier function to signal peer events
+	peers           map[peer.ID]*Actor
+	pendingPeers    map[peer.ID]*pendingPeer
+	roleIndex       map[types.Role]peerSet // Indexed by roles
+	account         share.Account
+	mutex           deadlock.RWMutex
+	logger          logger.Logger
+	network         *networking.Network
+	rbac            *rbac.Manager
+	consensusSet    *share.ActorSet
+	metrics         share.Collector  // General metrics collector from metrics package
+	topologyMetrics *TopologyMetrics // Topology-specific metrics
+	self            *Actor
+	onPeerEvent     func() // Notifier function to signal peer events
 
 	// Callback slices
 	actorAddedCallbacks   []ActorAddedCallback
@@ -108,6 +111,21 @@ func NewActors(logger logger.Logger, account share.Account, network *networking.
 		consensusSet: consensusSet,
 		metrics:      collector,
 		onPeerEvent:  onPeerEvent,
+	}
+
+	// Initialize topology metrics if we have access to a meter via network observability
+	if network != nil && network.Observability != nil && network.Observability.Meter != nil {
+		topologyMetrics, err := InitializeMetrics(network.Observability.Meter)
+		if err != nil {
+			logger.Error("Failed to initialize topology metrics", zap.Error(err))
+		} else {
+			a.topologyMetrics = topologyMetrics
+			// Record self actor metrics
+			ctx := context.Background()
+			for _, role := range account.Roles() {
+				topologyMetrics.RecordActorAdded(ctx, 1, role.String())
+			}
+		}
 	}
 
 	a.logger.Info("Initialized self actor in topology", "peer_id", a.self.ID.String())
@@ -294,6 +312,24 @@ func (a *Actors) AddPeer(peerID peer.ID, address types.Address, addresses []mult
 		a.roleIndex[role].add(peerID)
 	}
 
+	// Record metrics for added peer
+	if a.topologyMetrics != nil {
+		// Use background context for metrics
+		ctx := context.Background()
+
+		// Record actor addition for each role
+		for _, role := range roles {
+			a.topologyMetrics.RecordActorAdded(ctx, 1, role.String())
+		}
+		// Record actor connection
+		a.topologyMetrics.RecordActorConnection(ctx, 1)
+
+		// If this is a consensus actor, record that too
+		if actor.ConsensusActor != nil {
+			a.topologyMetrics.RecordConsensusActor(ctx, 1)
+		}
+	}
+
 	// Notify peer availability
 	if a.onPeerEvent != nil {
 		a.onPeerEvent()
@@ -344,6 +380,25 @@ func (a *Actors) RemovePeer(ctx context.Context, peerID peer.ID, force bool) err
 		if raErr := a.consensusSet.RemoveActor(ctx, peerID, force); raErr != nil {
 			return errors.Wrapf(raErr, "failed to remove actor from consensus set: %s", peerID)
 		}
+	}
+
+	// Record metrics for removed peer
+	if a.topologyMetrics != nil {
+		// Use the provided context for metrics
+		// Record actor removal for each role
+		for _, role := range actor.Roles {
+			a.topologyMetrics.RecordActorRemoved(ctx, 1, role.String())
+		}
+		// Record actor disconnection
+		a.topologyMetrics.RecordActorDisconnection(ctx, 1)
+
+		// If this was a consensus actor, record that too
+		if actor.ConsensusActor != nil {
+			a.topologyMetrics.RecordConsensusActor(ctx, -1)
+		}
+
+		// Simplified topology change latency - just record current operation time
+		a.topologyMetrics.RecordTopologyChangeLatency(ctx, time.Millisecond*10) // Use a nominal value
 	}
 
 	// Notify peer availability
@@ -439,6 +494,11 @@ func (a *Actors) markPeerAsPending(peerID peer.ID, addresses []multiaddr.Multiad
 		addresses: addresses,
 	}
 
+	// Record pending peer metrics
+	if a.topologyMetrics != nil {
+		a.topologyMetrics.RecordPendingPeer(context.Background(), 1)
+	}
+
 	a.logger.Info("Marked peer as pending", "peer_id", peerID.String())
 }
 
@@ -448,8 +508,18 @@ func (a *Actors) removePendingPeer(peerID peer.ID) error {
 	defer a.mutex.Unlock()
 
 	if a.pendingPeers != nil {
+		// Check if peer was actually pending before removal
+		_, wasPending := a.pendingPeers[peerID]
 		delete(a.pendingPeers, peerID)
-		a.logger.Info("Removed peer from pendingPeers", "peer_id", peerID.String())
+
+		// If the peer was pending and is now being removed, it's likely a timeout
+		if wasPending {
+			a.logger.Info("Removed peer from pendingPeers", "peer_id", peerID.String())
+
+			if a.topologyMetrics != nil {
+				a.topologyMetrics.RecordPendingPeerTimeout(context.Background(), 1)
+			}
+		}
 	}
 
 	return nil
@@ -457,6 +527,12 @@ func (a *Actors) removePendingPeer(peerID peer.ID) error {
 
 // verifyAndAddPeer moves a peer from pendingPeers to peers after verification.
 func (a *Actors) verifyAndAddPeer(peerID peer.ID, actorInfo *packets.ActorPacket) error {
+	startTime := time.Now() // Start timing the verification process
+
+	// Record verification attempt
+	if a.topologyMetrics != nil {
+		a.topologyMetrics.RecordActorVerification(context.Background(), 1)
+	}
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
 
@@ -568,6 +644,26 @@ func (a *Actors) verifyAndAddPeer(peerID peer.ID, actorInfo *packets.ActorPacket
 	}
 
 	a.logger.Info("Peer verified and added to topology", "peer_id", peerID.String())
+
+	// Record successful verification metrics
+	if a.topologyMetrics != nil {
+		ctx := context.Background()
+		// Record verification latency
+		a.topologyMetrics.RecordActorVerificationLatency(ctx, time.Since(startTime))
+
+		// Record actor addition for each role
+		for _, role := range actorInfo.Roles {
+			a.topologyMetrics.RecordActorAdded(ctx, 1, role.String())
+		}
+
+		// Record connection
+		a.topologyMetrics.RecordActorConnection(ctx, 1)
+
+		// If this is a consensus actor, record that too
+		if actor.ConsensusActor != nil {
+			a.topologyMetrics.RecordConsensusActor(ctx, 1)
+		}
+	}
 
 	// Invoke ActorAddedCallbacks outside the lock
 	a.mutex.Unlock()

@@ -3,6 +3,7 @@ package topology
 
 import (
 	"context"
+
 	"github.com/unpackdev/fdb/logger"
 	"github.com/unpackdev/fdb/metrics"
 	"github.com/unpackdev/fdb/networking"
@@ -66,6 +67,13 @@ func NewTopology(ctx context.Context, logger logger.Logger, account share.Accoun
 		rbac:          rbacMgr,
 		actorSet:      actorSet,
 		peerEventChan: peerEventChan,
+	}
+	
+	// Initialize and integrate topology metrics
+	err := integrateTopologyMetrics(t, collector)
+	if err != nil {
+		cancel()
+		return nil, errors.Wrap(err, "failed to initialize topology metrics")
 	}
 
 	// Register packet handlers via handlerRegistry
@@ -152,6 +160,14 @@ func (t *Topology) HandleActorPacket(ctx context.Context, msg *packets.NetworkPa
 
 // WaitForPeer waits until the specified peer is available in the topology or the context times out.
 func (t *Topology) WaitForPeer(ctx context.Context, targetPeerID peer.ID, timeout time.Duration) error {
+	// Start timing the wait operation
+	startTime := time.Now()
+	
+	// Record the wait operation start
+	if t.actors != nil && t.actors.topologyMetrics != nil {
+		t.actors.topologyMetrics.RecordWaitOperation(ctx, 1, "peer")
+	}
+	
 	// Create a context with timeout if not already set
 	if _, ok := ctx.Deadline(); !ok && timeout > 0 { // Changed 'deadline' to '_'
 		var cancel context.CancelFunc
@@ -160,11 +176,16 @@ func (t *Topology) WaitForPeer(ctx context.Context, targetPeerID peer.ID, timeou
 	}
 
 	for {
-		// Check if the peer is already available
+		// Check if the peer is available
 		_, err := t.Actors().GetPeer(targetPeerID)
 		if err == nil {
-			return nil // Peer is available
-		} else if !errors.Is(err, ErrPeerNotFound) {
+			// Peer found, record success metrics
+			if t.actors != nil && t.actors.topologyMetrics != nil {
+				t.actors.topologyMetrics.RecordWaitOperationSuccess(ctx, 1, "peer")
+				t.actors.topologyMetrics.RecordWaitOperationLatency(ctx, time.Since(startTime), "peer")
+			}
+			return nil
+		} else if err != nil && !errors.Is(err, ErrPeerNotFound) && !errors.Is(err, ErrInsufficientPermissions) {
 			// An unexpected error occurred
 			return err
 		}
@@ -174,6 +195,14 @@ func (t *Topology) WaitForPeer(ctx context.Context, targetPeerID peer.ID, timeou
 		case <-t.peerEventChan:
 			// Peer list has changed; recheck
 		case <-ctx.Done():
+			// Record timeout or cancellation metrics
+			if t.actors != nil && t.actors.topologyMetrics != nil {
+				if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+					t.actors.topologyMetrics.RecordWaitOperationTimeout(ctx, 1, "peer")
+				}
+				t.actors.topologyMetrics.RecordWaitOperationLatency(ctx, time.Since(startTime), "peer")
+			}
+			
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				return ErrTimeoutExceeded
 			}
@@ -184,17 +213,30 @@ func (t *Topology) WaitForPeer(ctx context.Context, targetPeerID peer.ID, timeou
 
 // WaitForPeers waits until at least one peer is available in the topology or the context times out.
 func (t *Topology) WaitForPeers(ctx context.Context, timeout time.Duration) error {
+	// Start timing the wait operation
+	startTime := time.Now()
+	
+	// Record the wait operation start
+	if t.actors != nil && t.actors.topologyMetrics != nil {
+		t.actors.topologyMetrics.RecordWaitOperation(ctx, 1, "any_peer")
+	}
+	
 	// Create a context with timeout if not already set
-	if _, ok := ctx.Deadline(); !ok && timeout > 0 {
+	if _, ok := ctx.Deadline(); !ok && timeout > 0 { // Changed 'deadline' to '_'
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, timeout)
 		defer cancel()
 	}
 
 	for {
-		// Check if at least one peer is available
+		// Check if any peers are available
 		peers, err := t.Actors().GetPeers()
 		if err == nil && len(peers) > 0 {
+			// Peers found, record success metrics
+			if t.actors != nil && t.actors.topologyMetrics != nil {
+				t.actors.topologyMetrics.RecordWaitOperationSuccess(ctx, 1, "any_peer")
+				t.actors.topologyMetrics.RecordWaitOperationLatency(ctx, time.Since(startTime), "any_peer")
+			}
 			return nil // At least one peer is available
 		} else if err != nil && !errors.Is(err, ErrInsufficientPermissions) {
 			// An unexpected error occurred
@@ -206,6 +248,14 @@ func (t *Topology) WaitForPeers(ctx context.Context, timeout time.Duration) erro
 		case <-t.peerEventChan:
 			// Peer list has changed; recheck
 		case <-ctx.Done():
+			// Record timeout or cancellation metrics
+			if t.actors != nil && t.actors.topologyMetrics != nil {
+				if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+					t.actors.topologyMetrics.RecordWaitOperationTimeout(ctx, 1, "any_peer")
+				}
+				t.actors.topologyMetrics.RecordWaitOperationLatency(ctx, time.Since(startTime), "any_peer")
+			}
+			
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				return ErrTimeoutExceeded
 			}
@@ -248,6 +298,14 @@ func (t *Topology) WaitForPeersWithRole(ctx context.Context, role types.Role, ti
 
 // WaitForPeersWithRoles waits until at least one peer with any of the specified roles is available or the context times out.
 func (t *Topology) WaitForPeersWithRoles(ctx context.Context, roles []types.Role, timeout time.Duration) error {
+	// Start timing the wait operation
+	startTime := time.Now()
+	
+	// Record the wait operation start
+	if t.actors != nil && t.actors.topologyMetrics != nil {
+		t.actors.topologyMetrics.RecordWaitOperation(ctx, 1, "peers_with_roles")
+	}
+	
 	// Create a context with timeout if not already set
 	if _, ok := ctx.Deadline(); !ok && timeout > 0 { // Changed 'deadline' to '_'
 		var cancel context.CancelFunc
@@ -259,6 +317,11 @@ func (t *Topology) WaitForPeersWithRoles(ctx context.Context, roles []types.Role
 		// Check if any peers with the specified roles are available
 		peers, err := t.Actors().GetPeersByRoles(roles...)
 		if err == nil && len(peers) > 0 {
+			// Peers with roles found, record success metrics
+			if t.actors != nil && t.actors.topologyMetrics != nil {
+				t.actors.topologyMetrics.RecordWaitOperationSuccess(ctx, 1, "peers_with_roles")
+				t.actors.topologyMetrics.RecordWaitOperationLatency(ctx, time.Since(startTime), "peers_with_roles")
+			}
 			return nil // At least one peer with any of the roles is available
 		} else if err != nil && !errors.Is(err, ErrInsufficientPermissions) {
 			// An unexpected error occurred
@@ -270,6 +333,14 @@ func (t *Topology) WaitForPeersWithRoles(ctx context.Context, roles []types.Role
 		case <-t.peerEventChan:
 			// Peer list has changed; recheck
 		case <-ctx.Done():
+			// Record timeout or cancellation metrics
+			if t.actors != nil && t.actors.topologyMetrics != nil {
+				if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+					t.actors.topologyMetrics.RecordWaitOperationTimeout(ctx, 1, "peers_with_roles")
+				}
+				t.actors.topologyMetrics.RecordWaitOperationLatency(ctx, time.Since(startTime), "peers_with_roles")
+			}
+			
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				return ErrTimeoutExceeded
 			}
