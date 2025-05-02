@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"github.com/erigontech/mdbx-go/mdbx"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -89,19 +90,28 @@ func (bw *BatchWriter) BufferWrite(key [32]byte, value []byte) error {
 	// XOR the first and last bytes for slightly better distribution
 	workerID := int(key[0]^key[31]) % bw.workers
 	
-	// Use non-blocking send to prevent backpressure
+	// Create a timeout context for the send operation
+	timeoutCtx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+	
+	// Try to send with timeout
 	select {
 	case bw.workerChannels[workerID] <- WriteRequest{Key: key, Value: value}:
 		// Successfully sent to channel
 		return nil
-	default:
-		// Channel is full, handle gracefully by using a goroutine to avoid blocking
-		// This helps during high-load scenarios to prevent caller blocking
+	case <-timeoutCtx.Done():
+		// Channel send timed out, try in background goroutine
 		go func() {
-			// This will block in the goroutine but not block the caller
-			bw.workerChannels[workerID] <- WriteRequest{Key: key, Value: value}
+			select {
+			case bw.workerChannels[workerID] <- WriteRequest{Key: key, Value: value}:
+				// Successfully sent
+			case <-time.After(5 * time.Second):
+				// If we can't send after a long timeout, log the error
+				zap.L().Error("Failed to queue record for batch writing after extended timeout",
+					zap.Binary("key_prefix", key[:8]))
+			}
 		}()
-		return nil
+		return errors.New("queue operation timed out, write queued in background")
 	}
 }
 

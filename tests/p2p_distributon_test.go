@@ -18,6 +18,14 @@ import (
 	"go.uber.org/zap"
 )
 
+// min returns the smaller of x or y
+func min(x, y int) int {
+	if x < y {
+		return x
+	}
+	return y
+}
+
 // TestP2PDistribution tests the discovery of nodes in the network and attempts to distribute database entries across the
 // network.
 func TestP2PDistribution(t *testing.T) {
@@ -122,7 +130,7 @@ func TestP2PDistribution(t *testing.T) {
 			name:     "Larger binary data (500MB)",
 			sizeKB:   500 * 1024,
 			random:   false,
-			waitTime: 3 * time.Second, // Extra time for larger payload
+			waitTime: 2 * time.Second, // Extra time for larger payload
 		},
 	}
 
@@ -228,6 +236,19 @@ func TestP2PDistribution(t *testing.T) {
 	}
 }
 
+// retry is a simple function that attempts the provided function multiple times with a delay
+func retry(attempts int, delay time.Duration, fn func() bool) bool {
+	for i := 0; i < attempts; i++ {
+		if fn() {
+			return true
+		}
+		if i < attempts-1 { // Don't sleep after the last attempt
+			time.Sleep(delay)
+		}
+	}
+	return false
+}
+
 func TestP2PLoadDistribution(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -274,38 +295,78 @@ func TestP2PLoadDistribution(t *testing.T) {
 	regularNode := nodes.GetNodeByIndex(1)
 	require.NotNil(t, regularNode, "Failed to get second node")
 
-	// Define benchmark test cases with different record counts and payload sizes
+	// Define batch-oriented test cases with different record sizes
 	testCases := []struct {
 		name           string
-		numRecords     int           // Number of records to write
-		payloadSize    int           // Size of each record in bytes
-		payloadType    string        // Type of payload (string, json, binary)
-		sampleInterval int           // Check every Nth record during verification
-		waitTime       time.Duration // Time to wait after writing all records
+		batchSize      int           // Number of records per batch
+		batchCount     int           // Number of batches to run
+		recordSize     int           // Size of each record in bytes
+		waitTime       time.Duration // Time to wait after each batch
+		retryAttempts  int           // Number of retry attempts for verification
+		retryDelay     time.Duration // Delay between retries
+		numRecords     int           // Total number of records (computed as batchSize * batchCount)
+		payloadType    string        // Type of payload ("string", "json", or "binary")
+		sampleInterval int           // Interval for sampling records during verification
 	}{
-		// {
-		// 	name:           "Small records (300 × 50B)",
-		// 	numRecords:     300,
-		// 	payloadSize:    50,
-		// 	payloadType:    "string",
-		// 	sampleInterval: 10, // Verify every 10th record
-		// 	waitTime:       300 * time.Millisecond,
-		// },
-		// {
-		// 	name:           "Medium batch (1000 × 200B)",
-		// 	numRecords:     1000,
-		// 	payloadSize:    200,
-		// 	payloadType:    "string",
-		// 	sampleInterval: 100, // Verify every 100th record
-		// 	waitTime:       1 * time.Second,
-		// },
 		{
-			name:           "Large batch (5000 × 100B)",
-			numRecords:     100000,
-			payloadSize:    10,
-			payloadType:    "string",
-			sampleInterval: 500, // Verify every 500th record
-			waitTime:       5 * time.Second,
+			name:           "Small records batches",
+			batchSize:      10,                     // 10 records per batch
+			batchCount:     5,                      // 5 batches (total 50 records)
+			recordSize:     50,                     // 50 byte records
+			waitTime:       300 * time.Millisecond, // Increased from 1000ms to give distribution more time
+			retryAttempts:  3,
+			retryDelay:     500 * time.Millisecond,
+			numRecords:     50,       // 10 * 5 = 50 records total
+			payloadType:    "binary", // Binary payload
+			sampleInterval: 5,        // Check every 5th record
+		},
+		{
+			name:           "Medium records batches",
+			batchSize:      5,         // 5 records per batch
+			batchCount:     3,         // 3 batches (total 15 records)
+			recordSize:     10 * 1024, // 10KB records
+			waitTime:       500 * time.Millisecond,
+			retryAttempts:  3,
+			retryDelay:     200 * time.Millisecond,
+			numRecords:     15,       // 5 * 3 = 15 records total
+			payloadType:    "binary", // Binary payload
+			sampleInterval: 3,        // Check every 3rd record
+		},
+		{
+			name:           "Large records batch",
+			batchSize:      2,               // 2 records per batch
+			batchCount:     2,               // 2 batches (total 4 records)
+			recordSize:     1 * 1024 * 1024, // 1MB records
+			waitTime:       1 * time.Second,
+			retryAttempts:  5,
+			retryDelay:     300 * time.Millisecond,
+			numRecords:     4,        // 2 * 2 = 4 records total
+			payloadType:    "binary", // Binary payload
+			sampleInterval: 1,        // Check every record due to small count
+		},
+		{
+			name:           "Extra large records batch",
+			batchSize:      1,               // 1 record per batch
+			batchCount:     2,               // 2 batches (total 2 records)
+			recordSize:     5 * 1024 * 1024, // 5MB records
+			waitTime:       2 * time.Second, // Longer wait due to larger size
+			retryAttempts:  5,
+			retryDelay:     500 * time.Millisecond,
+			numRecords:     2,        // 1 * 2 = 2 records total
+			payloadType:    "binary", // Binary payload
+			sampleInterval: 1,        // Check every record due to small count
+		},
+		{
+			name:           "High volume small records",
+			batchSize:      2000,      // 2000 records per batch
+			batchCount:     10,        // 10 batches (total 20000 records)
+			recordSize:     10 * 1024, // 10KB records
+			waitTime:       2 * time.Second,
+			retryAttempts:  5,
+			retryDelay:     500 * time.Millisecond,
+			numRecords:     20000,    // 2000 * 10 = 20000 records total
+			payloadType:    "binary", // Binary payload
+			sampleInterval: 25,       // Check every 25th record to keep verification reasonable
 		},
 	}
 
@@ -313,7 +374,15 @@ func TestP2PLoadDistribution(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Generate test data
-			t.Logf("Preparing %d records of %d bytes each", tc.numRecords, tc.payloadSize)
+			// Validate test configuration
+			if tc.numRecords <= 0 {
+				t.Fatalf("Invalid test configuration: numRecords must be > 0, got %d", tc.numRecords)
+			}
+			if tc.sampleInterval <= 0 {
+				t.Logf("Fixing invalid sampleInterval (was %d)", tc.sampleInterval)
+				tc.sampleInterval = 1 // Default to checking every record if interval is invalid
+			}
+			t.Logf("Preparing %d records of %d bytes each", tc.numRecords, tc.recordSize)
 
 			// Pre-generate all keys and payloads
 			keys := make([][32]byte, tc.numRecords)
@@ -330,7 +399,7 @@ func TestP2PLoadDistribution(t *testing.T) {
 				switch tc.payloadType {
 				case "string":
 					// Random string data
-					payload = make([]byte, tc.payloadSize)
+					payload = make([]byte, tc.recordSize)
 					_, err := rand.Read(payload)
 					require.NoError(t, err, "Failed to generate random payload")
 				case "json":
@@ -339,11 +408,11 @@ func TestP2PLoadDistribution(t *testing.T) {
 					_, err := rand.Read(id)
 					require.NoError(t, err)
 					json := fmt.Sprintf(`{"id":"%x","index":%d,"data":"padding_%s"}`,
-						id, i, strings.Repeat("X", tc.payloadSize-50))
+						id, i, strings.Repeat("X", tc.recordSize-50))
 					payload = []byte(json)
 				default:
 					// Binary data
-					payload = make([]byte, tc.payloadSize)
+					payload = make([]byte, tc.recordSize)
 					_, err := rand.Read(payload)
 					require.NoError(t, err, "Failed to generate random payload")
 				}
@@ -383,7 +452,7 @@ func TestP2PLoadDistribution(t *testing.T) {
 			// Calculate write performance
 			writeDuration := time.Since(writeStart)
 			writeOpsPerSec := float64(tc.numRecords) / writeDuration.Seconds()
-			totalDataMB := float64(tc.numRecords*tc.payloadSize) / (1024 * 1024)
+			totalDataMB := float64(tc.numRecords*tc.recordSize) / (1024 * 1024)
 			mbPerSec := totalDataMB / writeDuration.Seconds()
 
 			t.Logf("Write phase completed in %v", writeDuration)
@@ -425,7 +494,16 @@ func TestP2PLoadDistribution(t *testing.T) {
 						// Success - check value
 						regularValue := regularDbResp.Data
 						if !bytes.Equal(payloads[i], regularValue) {
-							t.Errorf("Record value mismatch on regular node for record %d", i)
+							// Format key for debug output
+							keyHex := fmt.Sprintf("%x", keys[i][:])
+
+							// Show hex comparison of first few bytes
+							expectedHex := fmt.Sprintf("%x", payloads[i][:min(len(payloads[i]), 16)])
+							actualHex := fmt.Sprintf("%x", regularValue[:min(len(regularValue), 16)])
+
+							// Show both hex and raw values for comparison
+							t.Errorf("Record value mismatch on regular node for record %d\n  Key: %s\n  Expected (len=%d): %s...\n  Actual (len=%d): %s...",
+								i, keyHex, len(payloads[i]), expectedHex, len(regularValue), actualHex)
 							continue
 						}
 						verifiedCount++
@@ -438,12 +516,17 @@ func TestP2PLoadDistribution(t *testing.T) {
 			}
 
 			verifyDuration := time.Since(verifyStart)
-			samplesChecked := (tc.numRecords + tc.sampleInterval - 1) / tc.sampleInterval // ceiling division
+			// Ensure we don't divide by zero
+			interval := tc.sampleInterval
+			if interval <= 0 {
+				interval = 1
+			}
+			samplesChecked := (tc.numRecords + interval - 1) / interval // ceiling division
 
 			t.Logf("Verification completed in %v", verifyDuration)
 			t.Logf("Distribution success rate: %d/%d samples verified (%.1f%%)",
 				verifiedCount, samplesChecked, float64(verifiedCount)/float64(samplesChecked)*100)
-			t.Logf("P2P distribution benchmark complete: %d records × %d bytes", tc.numRecords, tc.payloadSize)
+			t.Logf("P2P distribution benchmark complete: %d records × %d bytes", tc.numRecords, tc.recordSize)
 
 			// Require a reasonable success rate (80%+ of the samples should be successful)
 			successRate := float64(verifiedCount) / float64(samplesChecked)

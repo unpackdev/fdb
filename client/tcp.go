@@ -234,6 +234,11 @@ func (h *tcpEventHandler) OnTraffic(c gnet.Conn) gnet.Action {
 		// Append the chunk to our buffer
 		buf = append(buf, chunk...)
 
+		// Check if we have a complete message in the buffer
+		if isCompleteMessage(buf) {
+			break
+		}
+
 		// If we received less than what would fill a typical buffer,
 		// we've likely received the complete message for now
 		if len(chunk) < 4096 {
@@ -405,6 +410,50 @@ func (h *tcpEventHandler) OnTraffic(c gnet.Conn) gnet.Action {
 	}
 
 	return gnet.None
+}
+
+// isCompleteMessage checks if we have a complete valid message in the buffer
+// by verifying message structure and length requirements
+func isCompleteMessage(data []byte) bool {
+	// Need at least 1 byte for message type
+	if len(data) < 1 {
+		return false
+	}
+
+	// Check if message is a success response (which includes a payload length)
+	msgType := MessageType(data[0])
+	if msgType == MessageType(types.HandlerStatusSuccess.Byte()) {
+		// Need at least 5 bytes for header (1 status + 4 length)
+		if len(data) < 5 {
+			return false
+		}
+
+		// Check if actual data length matches expected length from header
+		expectedLength := binary.BigEndian.Uint32(data[1:5])
+		actualDataLength := len(data) - 5 // subtract header bytes
+
+		// Only complete if we have all the expected data
+		return uint32(actualDataLength) >= expectedLength
+	}
+
+	// For write/read handler messages which have a specific format
+	if msgType == MessageType('W') || msgType == MessageType('R') {
+		// These also use a length field - need at least 5 bytes (1 type + 4 length)
+		if len(data) < 5 {
+			return false
+		}
+
+		// Get the expected message length
+		expectedLength := binary.BigEndian.Uint32(data[1:5])
+		actualDataLength := len(data) - 5
+
+		// Check if we have the complete message
+		return uint32(actualDataLength) >= expectedLength
+	}
+
+	// For other message types where we can't easily determine completeness
+	// by examining headers, use a more conservative approach
+	return false
 }
 
 // OnTick is called periodically

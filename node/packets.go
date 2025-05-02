@@ -20,8 +20,8 @@ func (d *P2PDistributor) createRecordBatchPacket(records []db.WriteRequest) ([]b
 
 	for i, record := range records {
 		recordBatch.Records[i] = packets.Record{
-			Key:   record.Key,
-			Value: record.Value,
+			Key:   record.Key,   // Key is a fixed size array, so it's copied by value
+			Value: record.Value, // Use the deep copy to ensure each record has its own value
 		}
 	}
 
@@ -107,7 +107,7 @@ func (d *P2PDistributor) createRecordBatchPacket(records []db.WriteRequest) ([]b
 func (d *P2PDistributor) HandleRecordBatchPacket(ctx context.Context, packet *packets.NetworkPacket, sender peer.ID) error {
 	start := time.Now()
 
-	d.logger.Debug(
+	d.logger.Info(
 		"Received record batch packet",
 		zap.String("from_peer", sender.String()),
 		zap.Int("payload_size", len(packet.Payload)),
@@ -127,16 +127,54 @@ func (d *P2PDistributor) HandleRecordBatchPacket(ctx context.Context, packet *pa
 		zap.Int("record_count", len(recordBatch.Records)),
 	)
 
-	for _, record := range recordBatch.Records {
+	// Debug log the first 3 record keys and value prefixes for verification
+	for i, record := range recordBatch.Records {
+		if i < 3 { // Limit to first 3 records to avoid log spam
+			valPrefix := ""
+			if len(record.Value) > 0 {
+				prefixLen := 10
+				if len(record.Value) < prefixLen {
+					prefixLen = len(record.Value)
+				}
+				valPrefix = fmt.Sprintf("%v", record.Value[:prefixLen])
+			}
+			// Log key and value prefix for this record - use INFO level to ensure visibility
+			d.logger.Info(
+				"RECEIVED RECORD DETAILS",
+				zap.Int("index", i),
+				zap.String("key", fmt.Sprintf("%x", record.Key)),
+				zap.String("value_prefix", valPrefix),
+				zap.Int("value_length", len(record.Value)),
+			)
+		}
+	}
+
+	successCount := 0
+	errorCount := 0
+	for i, record := range recordBatch.Records {
+		// Log every record's key prefix for debugging
+		d.logger.Debug(
+			"Processing record",
+			zap.Int("record_index", i),
+			zap.Binary("key_prefix", record.Key[:8]),
+		)
+
 		err := d.node.batchWriter.BufferWrite(record.Key, record.Value)
 		if err != nil {
 			d.logger.Error(
 				"Failed to buffer received record",
 				zap.Error(err),
 				zap.Binary("key_prefix", record.Key[:8]),
+				zap.Int("record_index", i),
 			)
+			errorCount++
+		} else {
+			successCount++
 		}
 	}
+
+	// Force a flush of the batchWriter to ensure records are written immediately
+	d.node.batchWriter.Flush()
 
 	processingTime := time.Since(start)
 	d.stats.mu.Lock()
@@ -144,10 +182,12 @@ func (d *P2PDistributor) HandleRecordBatchPacket(ctx context.Context, packet *pa
 	d.stats.AverageLatencyMs = (d.stats.AverageLatencyMs + processingTime.Milliseconds()) / 2
 	d.stats.mu.Unlock()
 
-	d.logger.Debug(
-		"Successfully processed record batch",
+	d.logger.Info(
+		"Processed record batch",
 		zap.String("from_peer", sender.String()),
 		zap.Int("record_count", len(recordBatch.Records)),
+		zap.Int("success_count", successCount),
+		zap.Int("error_count", errorCount),
 		zap.Duration("processing_time", processingTime),
 	)
 

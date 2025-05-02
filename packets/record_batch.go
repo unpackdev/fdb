@@ -79,13 +79,24 @@ func DeserializeRecordBatch(data []byte) (*RecordBatch, error) {
 			return nil, fmt.Errorf("failed to read value length: %w", err)
 		}
 
-		// Read value
-		record.Value = make([]byte, valueLength)
-		if _, err := buffer.Read(record.Value); err != nil {
+		// Read value - create a new slice for each record
+		tempValue := make([]byte, valueLength)
+		if _, err := buffer.Read(tempValue); err != nil {
 			return nil, fmt.Errorf("failed to read record value: %w", err)
 		}
-
-		batch.Records = append(batch.Records, record)
+		
+		// Make a deep copy to avoid slice reference issues
+		independentValue := make([]byte, valueLength)
+		copy(independentValue, tempValue)
+		
+		// Create a completely new record with this value copy
+		newRecord := Record{
+			Key:   record.Key,   // Key is already a fixed-size array, so it's copied by value
+			Value: independentValue, // Use our independent copy of the value
+		}
+		
+		// Add the completely independent record to the batch
+		batch.Records = append(batch.Records, newRecord)
 	}
 
 	return batch, nil

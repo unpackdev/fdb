@@ -1,8 +1,6 @@
 package node
 
 import (
-	"fmt"
-
 	"github.com/unpackdev/fdb/db"
 	"github.com/unpackdev/fdb/logger"
 	"github.com/unpackdev/fdb/observability"
@@ -122,7 +120,7 @@ func (rh *DbReadHandler) Handle(conn transports.Connection, frame []byte) {
 	// Encode the response to bytes
 	response := dbResp.Encode()
 
-	fmt.Println("SENDING RESPONSE PREFIX", response[0:10], "with status byte:", response[0], "data length:", dbResp.Length)
+	//fmt.Println("SENDING RESPONSE PREFIX", response[0:10], "with status byte:", response[0], "data length:", dbResp.Length)
 
 	// Send the formatted response back to the client
 	conn.Send(response)

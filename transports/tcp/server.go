@@ -5,7 +5,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
-	"fmt"
 	"io"
 	"net"
 	"strings"
@@ -288,10 +287,10 @@ func (s *Server) OnTraffic(c gnet.Conn) (action gnet.Action) {
 	}
 
 	// Debug the data received
-	fmt.Printf("SERVER RECEIVED PACKET - Size: %d bytes\n", len(data))
-	if len(data) >= 4 {
-		fmt.Printf("FIRST 4 BYTES: %v\n", data[:4])
-	}
+	// fmt.Printf("SERVER RECEIVED PACKET - Size: %d bytes\n", len(data))
+	// if len(data) >= 4 {
+	// 	fmt.Printf("FIRST 4 BYTES: %v\n", data[:4])
+	// }
 
 	// First check if we're continuing a chunked message reassembly
 	if ctx.ChunkedMessageInfo != nil {

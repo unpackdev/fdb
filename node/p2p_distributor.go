@@ -124,10 +124,21 @@ func (d *P2PDistributor) Start() error {
 		go d.handlePubSubMessages(sub)
 	}
 
-	// Start queue processors
-	go d.processQueue(d.highPriorityQueue, 50*time.Millisecond)  // Process high priority quickly
-	go d.processQueue(d.normalQueue, 200*time.Millisecond)       // Process normal priority at medium pace
-	go d.processQueue(d.lowPriorityQueue, 1000*time.Millisecond) // Process low priority at slower pace
+	// Start queue processors with optimized intervals for better batching
+	// Fast enough for high priority, but still allows some batching
+	go d.processQueue(d.highPriorityQueue, 25*time.Millisecond)
+
+	// This is critical for the normal queue which handles the bulk of P2P distribution
+	// We reduce the interval to match better with how the test writes records rapidly
+	go d.processQueue(d.normalQueue, 30*time.Millisecond)
+
+	// Longer interval for low priority to maximize batching
+	go d.processQueue(d.lowPriorityQueue, 100*time.Millisecond)
+
+	d.logger.Info("Started queue processors with optimized batching intervals",
+		zap.Duration("high_priority", 25*time.Millisecond),
+		zap.Duration("normal_priority", 30*time.Millisecond),
+		zap.Duration("low_priority", 100*time.Millisecond))
 
 	d.stateMgr.SetState(P2PDistributorStateType, state.Started)
 	return nil
@@ -206,24 +217,119 @@ func (d *P2PDistributor) processQueue(queue chan *RecordBatch, interval time.Dur
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
+	// Buffered accumulator for batches that should be processed together
+	var pendingBatches []*RecordBatch
+
+	// Distribute any accumulated batches
+	distributeAccumulated := func() {
+		// Nothing to distribute
+		if len(pendingBatches) == 0 {
+			return
+		}
+
+		// Count total records in pending batches for logging
+		totalPendingRecords := 0
+		for _, b := range pendingBatches {
+			totalPendingRecords += len(b.Records)
+		}
+
+		d.logger.Debug("Distributing accumulated batches",
+			zap.Int("batch_count", len(pendingBatches)),
+			zap.Int("total_records", totalPendingRecords))
+
+		// If there's just one batch and it's not full, process it directly
+		if len(pendingBatches) == 1 && len(pendingBatches[0].Records) < d.batchSize {
+			d.logger.Debug("Distributing single non-full batch directly",
+				zap.Int("record_count", len(pendingBatches[0].Records)))
+			d.distributeBatch(pendingBatches[0])
+			pendingBatches = nil
+			return
+		}
+
+		// Multiple batches - put them back in the queue and let processPendingBatches
+		// handle the optimal batching
+		d.logger.Debug("Requeuing multiple batches for optimized batching",
+			zap.Int("batch_count", len(pendingBatches)),
+			zap.Int("total_records", totalPendingRecords))
+
+		for _, batch := range pendingBatches {
+			// Use blocking send to ensure no records are dropped
+			queue <- batch
+		}
+
+		// Process with the batching logic
+		d.processPendingBatches(queue)
+		pendingBatches = nil
+	}
+
 	for {
 		select {
 		case <-d.ctx.Done():
+			// Process any remaining batches before shutting down
+			d.logger.Debug("Processing remaining batches before shutdown",
+				zap.Int("pending_batch_count", len(pendingBatches)))
+			distributeAccumulated()
 			return
+
 		case batch := <-queue:
-			d.distributeBatch(batch)
+			// Add to the accumulator rather than immediately distributing
+			pendingBatches = append(pendingBatches, batch)
+
+			// Log the current accumulation state
+			totalRecords := 0
+			for _, b := range pendingBatches {
+				totalRecords += len(b.Records)
+			}
+
+			d.logger.Debug("Added batch to accumulator",
+				zap.Int("batch_records", len(batch.Records)),
+				zap.Int("accumulated_batches", len(pendingBatches)),
+				zap.Int("accumulated_records", totalRecords))
+
+			// If our accumulator would exceed the batch size, trigger distribution
+			if totalRecords >= d.batchSize {
+				d.logger.Debug("Accumulated records meet or exceed batch size, triggering distribution",
+					zap.Int("accumulated_records", totalRecords),
+					zap.Int("batch_size", d.batchSize))
+				distributeAccumulated()
+			}
+
 		case <-ticker.C:
+			// Only log if we have pending batches
+			if len(pendingBatches) > 0 {
+				totalRecords := 0
+				for _, b := range pendingBatches {
+					totalRecords += len(b.Records)
+				}
+
+				d.logger.Debug("Ticker triggered distribution of accumulated batches",
+					zap.Int("accumulated_batches", len(pendingBatches)),
+					zap.Int("accumulated_records", totalRecords))
+			}
+
 			// Check if queue has accumulated items for batching
-			d.processPendingBatches(queue)
+			distributeAccumulated()
+
+			// Also check if there are more items in the channel that could be batched
+			if len(queue) > 0 {
+				d.logger.Debug("Additional batches in queue, processing",
+					zap.Int("queue_length", len(queue)))
+				d.processPendingBatches(queue)
+			}
 		}
 	}
 }
 
 // processPendingBatches attempts to combine and process multiple batches
 func (d *P2PDistributor) processPendingBatches(queue chan *RecordBatch) {
-	if len(queue) == 0 {
+	queueLen := len(queue)
+	if queueLen == 0 {
 		return
 	}
+
+	d.logger.Debug("Starting to process pending batches",
+		zap.Int("queue_length", queueLen),
+		zap.Int("batch_size", d.batchSize))
 
 	// Process up to batchSize records or empty the queue
 	recordCount := 0
@@ -232,17 +338,32 @@ func (d *P2PDistributor) processPendingBatches(queue chan *RecordBatch) {
 
 	// Try to empty queue while keeping target and priority consistent
 	drainCount := 0
-	maxDrain := 100 // Safety limit
+	maxDrain := 10000 // Safety limit
+
+	batchesDrained := 0
+	recordsCombined := 0
+	batchesRequeued := 0
+
+	d.logger.Debug("Starting drain loop for batch combination")
 
 drainLoop:
 	for recordCount < d.batchSize && drainCount < maxDrain {
 		select {
 		case batch := <-queue:
+			batchesDrained++
+			d.logger.Debug("Drained batch from queue",
+				zap.Int("records_in_batch", len(batch.Records)),
+				zap.Uint8("priority", uint8(batch.Priority)),
+				zap.Uint8("target", uint8(batch.Target)))
+
 			// If this is the first batch, set the target type
 			if drainCount == 0 {
 				combinedBatch.Target = batch.Target
 				combinedBatch.Priority = batch.Priority
 				combinedBatch.TargetPeer = batch.TargetPeer
+				d.logger.Debug("Set combined batch parameters from first batch",
+					zap.Uint8("target", uint8(combinedBatch.Target)),
+					zap.Uint8("priority", uint8(combinedBatch.Priority)))
 			}
 
 			// Only combine batches going to the same target type
@@ -253,35 +374,42 @@ drainLoop:
 				spaceLeft := d.batchSize - recordCount
 				recordsToAdd := len(batch.Records)
 
+				d.logger.Debug("Batch compatible with combined batch",
+					zap.Int("records_to_add", recordsToAdd),
+					zap.Int("space_left", spaceLeft))
+
 				if recordsToAdd > spaceLeft {
 					// Take only what fits
 					combinedBatch.Records = append(combinedBatch.Records, batch.Records[:spaceLeft]...)
 
 					// Put the rest back in the queue
 					batch.Records = batch.Records[spaceLeft:]
-					select {
-					case queue <- batch:
-						// Successfully put back remainder
-					default:
-						// Queue full, just log and continue
-						d.logger.Warn("Failed to requeue partial batch - queue full")
-					}
+					// Use blocking operation to ensure no records are dropped
+					queue <- batch
+					batchesRequeued++
 
+					recordsCombined += spaceLeft
 					recordCount += spaceLeft
+					d.logger.Debug("Partial batch combined - remaining records requeued",
+						zap.Int("records_added", spaceLeft),
+						zap.Int("records_requeued", len(batch.Records)))
 				} else {
 					// All fits, add everything
 					combinedBatch.Records = append(combinedBatch.Records, batch.Records...)
+					recordsCombined += recordsToAdd
 					recordCount += recordsToAdd
+					d.logger.Debug("Full batch combined",
+						zap.Int("records_added", recordsToAdd),
+						zap.Int("current_combined_count", recordCount))
 				}
 			} else {
 				// Different target, put it back
-				select {
-				case queue <- batch:
-					// Successfully put back
-				default:
-					// Queue full, just log
-					d.logger.Warn("Failed to requeue incompatible batch - queue full")
-				}
+				// Use blocking operation to ensure no records are dropped
+				queue <- batch
+				batchesRequeued++
+				d.logger.Debug("Incompatible batch requeued",
+					zap.Uint8("batch_target", uint8(batch.Target)),
+					zap.Uint8("combined_target", uint8(combinedBatch.Target)))
 			}
 
 			drainCount++
@@ -299,17 +427,29 @@ drainLoop:
 
 // distributeBatch sends a batch of records according to its target
 func (d *P2PDistributor) distributeBatch(batch *RecordBatch) {
-	if len(batch.Records) == 0 {
+	recordCount := len(batch.Records)
+
+	if recordCount == 0 {
 		return
 	}
 
+	d.logger.Debug("Distributing batch",
+		zap.Int("record_count", recordCount),
+		zap.Uint8("target", uint8(batch.Target)),
+		zap.Uint8("priority", uint8(batch.Priority)))
+
 	switch batch.Target {
 	case TargetAll:
+		d.logger.Debug("Distributing to all peers", zap.Int("record_count", recordCount))
 		d.distributeToAllPeers(batch)
 	case TargetValidators:
+		d.logger.Debug("Distributing to validators", zap.Int("record_count", recordCount))
 		d.distributeToValidators(batch)
 	case TargetDirectPeer:
 		if batch.TargetPeer != nil {
+			d.logger.Debug("Distributing to direct peer",
+				zap.Int("record_count", recordCount),
+				zap.String("peer_id", batch.TargetPeer.String()))
 			d.distributeToPeer(*batch.TargetPeer, batch.Records)
 		} else {
 			d.logger.Error("Cannot distribute to direct peer: no peer specified")
@@ -319,10 +459,13 @@ func (d *P2PDistributor) distributeBatch(batch *RecordBatch) {
 
 // DistributeRecord adds a record to the appropriate distribution queue
 func (d *P2PDistributor) DistributeRecord(key [32]byte, value []byte, priority Priority, target Target) error {
-	// Create a single-record batch
+	// Create a deep copy of the value when a record first enters the system
+	valueCopy := make([]byte, len(value))
+	copy(valueCopy, value)
+
 	record := db.WriteRequest{
 		Key:   key,
-		Value: value,
+		Value: valueCopy,
 	}
 
 	batch := &RecordBatch{
@@ -342,25 +485,37 @@ func (d *P2PDistributor) DistributeRecord(key [32]byte, value []byte, priority P
 		queue = d.lowPriorityQueue
 	}
 
-	// Non-blocking send to avoid caller being blocked
+	// Use a timeout to avoid blocking forever while still being reliable
+	timeoutCtx, cancel := context.WithTimeout(d.ctx, 10*time.Second)
+	defer cancel()
+
 	select {
 	case queue <- batch:
 		return nil
-	default:
-		// Queue full, handle with fallback strategy
+	case <-timeoutCtx.Done():
+		// If we time out, still try to send in a separate goroutine
 		go func() {
-			// This will block in its own goroutine
-			queue <- batch
+			select {
+			case queue <- batch:
+				// Successfully queued
+			case <-d.ctx.Done():
+				// System shutting down, log the loss
+				d.logger.Error("Lost record during shutdown - queue operation timed out")
+			}
 		}()
-		return nil
+		return errors.New("queue operation timed out, record queued in background")
 	}
 }
 
 // DistributeRecordToPeer sends a record directly to a specific peer
 func (d *P2PDistributor) DistributeRecordToPeer(key [32]byte, value []byte, peerID peer.ID, priority Priority) error {
+	// Create a deep copy of the value when a record first enters the system
+	valueCopy := make([]byte, len(value))
+	copy(valueCopy, value)
+
 	record := db.WriteRequest{
 		Key:   key,
-		Value: value,
+		Value: valueCopy,
 	}
 
 	batch := &RecordBatch{
@@ -381,15 +536,25 @@ func (d *P2PDistributor) DistributeRecordToPeer(key [32]byte, value []byte, peer
 		queue = d.lowPriorityQueue
 	}
 
-	// Non-blocking send with fallback
+	// Use a timeout to avoid blocking forever while still being reliable
+	timeoutCtx, cancel := context.WithTimeout(d.ctx, 500*time.Millisecond)
+	defer cancel()
+
 	select {
 	case queue <- batch:
 		return nil
-	default:
+	case <-timeoutCtx.Done():
+		// If we time out, still try to send in a separate goroutine
 		go func() {
-			queue <- batch
+			select {
+			case queue <- batch:
+				// Successfully queued
+			case <-d.ctx.Done():
+				// System shutting down, log the loss
+				d.logger.Error("Lost direct peer record during shutdown - queue operation timed out")
+			}
 		}()
-		return nil
+		return errors.New("queue operation timed out, direct peer record queued in background")
 	}
 }
 
@@ -519,16 +684,18 @@ func (d *P2PDistributor) distributeToPeer(targetPeer peer.ID, records []db.Write
 // handlePubSubMessages processes incoming PubSub messages from the gossip network
 func (d *P2PDistributor) handlePubSubMessages(sub *pubsub.Subscription) {
 	d.logger.Info("Starting PubSub message handler")
+	messageCount := 0
 
 	for {
 		select {
 		case <-d.ctx.Done():
-			d.logger.Info("Stopping PubSub message handler")
+			d.logger.Info("Stopping PubSub message handler", zap.Int("total_messages_processed", messageCount))
 			return
 		default:
 			msg, err := sub.Next(d.ctx)
 			if err != nil {
 				if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+					d.logger.Info("Context canceled, exiting PubSub handler", zap.Int("total_messages_processed", messageCount))
 					return // Context canceled, exit gracefully
 				}
 
@@ -536,15 +703,18 @@ func (d *P2PDistributor) handlePubSubMessages(sub *pubsub.Subscription) {
 				continue
 			}
 
+			messageCount++
+
 			if msg.ReceivedFrom == d.node.network.Host().ID() {
 				d.logger.Debug("Skipping PubSub message from self")
 				continue
 			}
 
-			d.logger.Debug(
+			d.logger.Info(
 				"Received PubSub message",
 				zap.String("from", msg.ReceivedFrom.String()),
 				zap.Int("data_size", len(msg.Data)),
+				zap.Int("message_count", messageCount),
 			)
 
 			networkPacket, err := packets.DeserializeNetworkPacket(msg.Data)
@@ -553,12 +723,25 @@ func (d *P2PDistributor) handlePubSubMessages(sub *pubsub.Subscription) {
 				continue
 			}
 
+			d.logger.Info(
+				"Deserialized network packet",
+				zap.String("from", msg.ReceivedFrom.String()),
+				zap.Int("packet_type", int(networkPacket.Type)),
+				zap.Int("payload_size", len(networkPacket.Payload)),
+			)
+
 			switch networkPacket.Type {
 			case packets.RecordBatchType:
 				// Handle the record batch packet using our existing handler
+				d.logger.Info("Processing RecordBatch from PubSub",
+					zap.String("sender", msg.ReceivedFrom.String()))
+
 				err = d.HandleRecordBatchPacket(d.ctx, networkPacket, msg.ReceivedFrom)
 				if err != nil {
 					d.logger.Error("Failed to process PubSub RecordBatch", zap.Error(err))
+				} else {
+					d.logger.Info("Successfully processed PubSub RecordBatch",
+						zap.String("sender", msg.ReceivedFrom.String()))
 				}
 			default:
 				d.logger.Debug("Ignoring non-RecordBatch PubSub message",
