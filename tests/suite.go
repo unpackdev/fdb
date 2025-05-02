@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/unpackdev/fdb"
 	"github.com/unpackdev/fdb/accounts"
+	"github.com/unpackdev/fdb/client"
 	"github.com/unpackdev/fdb/config"
 	"github.com/unpackdev/fdb/db"
 	"github.com/unpackdev/fdb/logger"
@@ -93,6 +94,7 @@ type TestNode struct {
 	role    types.Role
 	dbM     *db.Manager
 	fDb     *fdb.FDB
+	client  *client.Client
 }
 
 func (t *TestNode) Ctx() context.Context {
@@ -456,6 +458,16 @@ func InitializeTestNodes(
 		// // Wait for the RPC to start
 		stateErr = tNode.state.WaitForState(rpc.RpcStateType, state.Started, 5*time.Second)
 		require.NoError(t, stateErr)
+
+		// Initialize client to raw tcp socket, not actual RPC client.
+		client, err := CreateClient(t, ctx, tNode.logger, tNode.config.GetTransportByType(types.TCPTransportType).Config.(*config.TcpTransport).Port)
+		require.NoError(t, err)
+
+		// Connect to the node
+		connectErr := client.Start(ctx)
+		require.NoError(t, connectErr)
+
+		tNode.client = client
 	}
 
 	for _, tNode := range nodes {

@@ -1,261 +1,186 @@
 package tests
 
 import (
-	"bytes"
+	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
-	"net"
+	"testing"
 	"time"
 
-	"github.com/unpackdev/fdb/config"
+	"github.com/panjf2000/gnet/v2"
+	"github.com/unpackdev/fdb/client"
+	"github.com/unpackdev/fdb/logger"
 	"github.com/unpackdev/fdb/messages"
 	"github.com/unpackdev/fdb/types"
 	"go.uber.org/zap"
 )
 
-// AcquireClient creates and returns a new TCP client connection to the target node
-func (t *TestNode) AcquireClient(targetNode *TestNode) (*net.TCPConn, error) {
-	// Get the target node's TCP address - need to find the correct TCP transport config
-	var tcpAddress string
-	for _, transport := range targetNode.Config().Transports {
-		if transport.Type == types.TCPTransportType && transport.Enabled {
-			// Extract the TCP configuration
-			tcpConfig, ok := transport.Config.(*config.TcpTransport)
-			if !ok || !tcpConfig.Enabled {
-				continue
-			}
+const (
+	// maxChunkSize keeps every TCP write comfortably below the default Ethernet
+	// MTU once TCP/IP framing overhead is added.
+	maxChunkSize = 60 * 1024 // 60 KiB
+)
 
-			// Create the address string
-			tcpAddress = fmt.Sprintf("%s:%d", tcpConfig.IPv4, tcpConfig.Port)
-			break
+func CreateClient(t *testing.T, ctx context.Context, logger logger.Logger, port int) (*client.Client, error) {
+	cfg := client.NewConfig()
+
+	cli := client.NewClient(ctx, cfg)
+
+	// Create a new TCP transport with gnet options optimized for large payloads
+	tcpTransport := client.NewTCPTransport(fmt.Sprintf("127.0.0.1:%d", port), logger,
+		gnet.WithMulticore(true),
+		gnet.WithTCPNoDelay(gnet.TCPNoDelay),
+		gnet.WithSocketRecvBuffer(256*1024), // 256KB receive buffer
+		gnet.WithSocketSendBuffer(256*1024), // 256KB send buffer
+	)
+
+	// Register the transport with the client
+	if err := cli.RegisterTransport("tcp", tcpTransport); err != nil {
+		return nil, err
+	}
+
+	return cli, nil
+}
+
+// -----------------------------------------------------------------------------
+// Send helper methods
+// -----------------------------------------------------------------------------
+
+// SendMessage sends a message to the target node and returns an error if the
+// send fails.
+func (t *TestNode) SendMessage(targetNode *TestNode, transportType types.TransportType, handlerType types.HandlerType, data []byte) error {
+	// Ensure client is initialized
+	if targetNode.client == nil {
+		return errors.New("client not initialized")
+	}
+
+	// Get the TCP transport from the client
+	tcpTransport, err := targetNode.client.GetTransport("tcp")
+	if err != nil {
+		return fmt.Errorf("failed to get TCP transport: %w", err)
+	}
+
+	// Create and encode the message
+	var encodedMsg []byte
+	if _, decErr := messages.Decode(data); decErr == nil {
+		// Data is already an encoded message
+		encodedMsg = data
+	} else {
+		// Generate a new message with the data
+		msg, err := messages.GenerateRandomMessageWithData(handlerType, data)
+		if err != nil {
+			return fmt.Errorf("failed to generate message: %w", err)
+		}
+
+		if encodedMsg, err = msg.Encode(); err != nil {
+			return fmt.Errorf("failed to encode message: %w", err)
 		}
 	}
 
-	if tcpAddress == "" {
-		return nil, fmt.Errorf("no TCP transport configured for target node")
-	}
-
-	// Resolve the server address
-	serverAddr, err := net.ResolveTCPAddr("tcp", tcpAddress)
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve target address %s: %w", tcpAddress, err)
-	}
-
-	// Create the TCP client
-	client, err := net.DialTCP("tcp", nil, serverAddr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to target node %s: %w", tcpAddress, err)
-	}
-
-	t.logger.Debug("Acquired TCP client connection", zap.String("to", tcpAddress))
-	return client, nil
-}
-
-// SendMessage sends a message to the target node and returns an error if the send fails
-func (t *TestNode) SendMessage(targetNode *TestNode, transportType types.TransportType, handlerType types.HandlerType, data []byte) error {
-	// Acquire a direct TCP connection to the target node
-	client, err := t.AcquireClient(targetNode)
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-
-	// Generate a message with the provided data
-	msg, err := messages.GenerateRandomMessageWithData(handlerType, data)
-	if err != nil {
-		return fmt.Errorf("failed to generate message: %w", err)
-	}
-
-	// Encode the message
-	encodedMsg, err := msg.Encode()
-	if err != nil {
-		return fmt.Errorf("failed to encode message: %w", err)
-	}
-
-	// Write the message to the server
-	_, err = client.Write(encodedMsg)
-	if err != nil {
-		return fmt.Errorf("failed to write message: %w", err)
+	// Send the message using the transport
+	if err := tcpTransport.Send(encodedMsg); err != nil {
+		return fmt.Errorf("failed to send message: %w", err)
 	}
 
 	t.logger.Debug("Sent message",
 		zap.Int("bytes", len(encodedMsg)),
-		zap.String("to", client.RemoteAddr().String()))
+		zap.Stringer("handler_type", handlerType))
 
 	return nil
 }
 
-// SendAndReceiveMessage sends a message to another node and directly waits for a response
-// Similar to the benchmark code, this handles the connection directly
-func (t *TestNode) SendAndReceiveMessage(targetNode *TestNode, transportType types.TransportType,
-	handlerType types.HandlerType, data []byte, timeout time.Duration) ([]byte, error) {
-	// Acquire a direct TCP connection to the target node
-	client, err := t.AcquireClient(targetNode)
-	if err != nil {
-		return nil, err
+// -----------------------------------------------------------------------------
+// Round‑trip helper (send + blocking read)
+// -----------------------------------------------------------------------------
+
+// SendAndReceiveMessage sends a message to another node and waits for a
+// response. This implementation uses the client package's ResponseHandler for
+// asynchronous but reliable large payload handling.
+func (t *TestNode) SendAndReceiveMessage(targetNode *TestNode, transportType types.TransportType, handlerType types.HandlerType, data []byte, timeout time.Duration) ([]byte, error) {
+	// Ensure client is initialized
+	if targetNode.client == nil {
+		return nil, errors.New("client not initialized")
 	}
-	defer client.Close()
 
+	// Get the TCP transport from the client
+	tcp, err := targetNode.client.GetTransport("tcp")
+	if err != nil {
+		return nil, fmt.Errorf("failed to get TCP transport: %w", err)
+	}
+
+	tcpTransport, ok := tcp.(*client.TCPTransport)
+	if !ok {
+		return nil, errors.New("transport is not a TCPTransport")
+	}
+
+	// Determine the appropriate message type for the response
+	responseType := client.MessageType(types.HandlerStatusSuccess.Byte())
+
+	// Register a response channel before sending the message
+	responseCh := tcpTransport.RegisterResponseChannel(responseType)
+
+	// Prepare the message
 	var encodedMsg []byte
-
-	// Check if data is already a properly encoded Message
-	// Try to decode it as a Message to see if it's valid
-	_, decodeErr := messages.Decode(data)
-	if decodeErr == nil {
-		// Data is already a properly encoded Message
+	if _, decErr := messages.Decode(data); decErr == nil {
+		// Data is already an encoded message
 		encodedMsg = data
 	} else {
-		// Data is not a properly encoded Message, so generate a new one with random key
+		// Generate a new message with the data
 		msg, err := messages.GenerateRandomMessageWithData(handlerType, data)
 		if err != nil {
 			return nil, fmt.Errorf("failed to generate message: %w", err)
 		}
 
-		// Encode the message
 		encodedMsg, err = msg.Encode()
 		if err != nil {
 			return nil, fmt.Errorf("failed to encode message: %w", err)
 		}
 	}
 
-	// Set read deadline based on timeout - but use at least 5 seconds for large payloads
-	readTimeout := timeout
-	if readTimeout < 5*time.Second {
-		readTimeout = 5 * time.Second
-	}
-	if err := client.SetReadDeadline(time.Now().Add(readTimeout)); err != nil {
-		return nil, fmt.Errorf("failed to set read deadline: %w", err)
+	// For large payloads, we use a chunking protocol to ensure reliable transmission
+	if len(encodedMsg) > maxChunkSize {
+		t.logger.Info("Using chunked message protocol for large payload",
+			zap.Int("size", len(encodedMsg)),
+			zap.Stringer("handler", handlerType))
+
+		// Prepare the chunked message with a 4-byte length prefix
+		// The server expects: [total_size(4 bytes)][payload...]
+		lengthPrefix := make([]byte, 4)
+		binary.LittleEndian.PutUint32(lengthPrefix, uint32(len(encodedMsg)))
+
+		// Prepend the length prefix to the message
+		chunkedMsg := append(lengthPrefix, encodedMsg...)
+
+		// Replace the original message with the chunked version
+		encodedMsg = chunkedMsg
+
+		t.logger.Debug("Prepared chunked message",
+			zap.Int("original_size", len(encodedMsg)-4),
+			zap.Int("with_prefix_size", len(encodedMsg)))
 	}
 
-	// Start measuring latency
+	// Send the message
 	start := time.Now()
-
-	// Write the message to the server
-	_, err = client.Write(encodedMsg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to write message: %w", err)
+	if err := tcpTransport.Send(encodedMsg); err != nil {
+		// Make sure to unregister the response channel on error
+		tcpTransport.UnregisterResponseChannel(responseType)
+		return nil, fmt.Errorf("failed to send message: %w", err)
 	}
 
 	t.logger.Debug("Sent message",
 		zap.Int("bytes", len(encodedMsg)),
-		zap.String("to", client.RemoteAddr().String()))
+		zap.Stringer("handler", handlerType))
 
-	// Allocate a larger buffer to read responses - big enough for large payloads
-	// 256KB buffer ensures we can handle even larger payloads than 65KB
-	bufSize := 256 * 1024 
-	buf := make([]byte, bufSize) 
-	var responseBuf bytes.Buffer
-
-	// Use a generous overall timeout for the entire operation
-	baseTimeout := 5 * time.Second
-	if timeout > baseTimeout {
-		baseTimeout = timeout
-	}
-	
-	// Deadline for the entire operation 
-	operationDeadline := time.Now().Add(baseTimeout)
-	
-	// Set overall deadline
-	if err := client.SetDeadline(operationDeadline); err != nil {
-		return nil, fmt.Errorf("failed to set operation deadline: %w", err)
-	}
-
-	// Track our reading progress
-	totalBytesRead := 0
-	lastReadSize := 0
-	noProgressCount := 0
-	
-	// Read in a loop until we get EOF or timeout
-	for {
-		// Update how much time we have left for this read
-		timeRemaining := operationDeadline.Sub(time.Now())
-		if timeRemaining <= 0 {
-			break // Total operation timeout reached
-		}
-		
-		// Set timeout for this specific read operation
-		readTimeout := 500 * time.Millisecond
-		if timeRemaining < readTimeout {
-			readTimeout = timeRemaining
-		}
-		client.SetReadDeadline(time.Now().Add(readTimeout))
-
-		// Try reading into our buffer
-		n, err := client.Read(buf)
-		
-		// Check for progress (debugging for stuck reads)
-		if n == lastReadSize {
-			noProgressCount++
-			if noProgressCount > 5 {
-				t.logger.Debug("No new data after multiple reads", 
-					zap.Int("total_received", totalBytesRead))
-				break // Assume we're done if we keep getting the same amount of data
-			}
-		} else {
-			noProgressCount = 0
-			lastReadSize = n
-		}
-
-		// If we read something, add it to our result buffer
-		if n > 0 {
-			totalBytesRead += n
-			responseBuf.Write(buf[:n])
-			t.logger.Debug("Read chunk of data", 
-				zap.Int("chunk_bytes", n), 
-				zap.Int("total_bytes", totalBytesRead))
-		}
-
-		// Handle different read outcomes
-		if err != nil {
-			// EOF means we reached the end of data cleanly
-			if errors.Is(err, io.EOF) {
-				t.logger.Debug("Received EOF", zap.Int("total_bytes", totalBytesRead))
-				break
-			}
-
-			// Handle timeout - could mean we're done or server is slow
-			if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-				// If we have some data but hit a timeout, we might be done
-				if totalBytesRead > 0 {
-					t.logger.Debug("Read timeout with data", zap.Int("total_bytes", totalBytesRead))
-					
-					// If we've read more than 64KB, we're likely done with large payloads
-					// This helps with boundary cases when the server doesn't properly signal EOF
-					if totalBytesRead > 65*1024 {
-						break
-					}
-					
-					// Otherwise, try another read
-					continue
-				} else {
-					// No data at all means server may be unresponsive
-					return nil, fmt.Errorf("timeout waiting for server response")
-				}
-			}
-
-			// For any other error, return it
-			return nil, fmt.Errorf("failed to read response: %w", err)
-		}
-		
-		// If we filled our read buffer completely, continue immediately to read more
-		// Otherwise, a short read with no error might mean we're at the end
-		if n < bufSize {
-			// Short read with no error - means we got all available data
-			t.logger.Debug("Short read with no error, likely complete", 
-				zap.Int("read_size", n), 
-				zap.Int("buffer_size", bufSize))
-			break
-		}
+	// Wait for the response with the provided timeout
+	response, err := tcpTransport.WaitForResponseWithTimeout(responseCh, timeout)
+	if err != nil {
+		return nil, fmt.Errorf("error waiting for response: %w", err)
 	}
 
 	latency := time.Since(start)
-
 	t.logger.Debug("Received response",
-		zap.Int("bytes", responseBuf.Len()),
-		zap.String("from", client.RemoteAddr().String()),
+		zap.Int("bytes", len(response)),
 		zap.Duration("latency", latency))
-
-	// Return the complete data from the buffer
-	return responseBuf.Bytes(), nil
+	return response, nil
 }

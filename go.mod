@@ -23,7 +23,7 @@ require (
 	github.com/multiformats/go-multiaddr v0.15.0
 	github.com/multiformats/go-multihash v0.2.3
 	github.com/panjf2000/gnet v1.6.7
-	github.com/panjf2000/gnet/v2 v2.5.7
+	github.com/panjf2000/gnet/v2 v2.7.2
 	github.com/pkg/errors v0.9.1
 	github.com/quic-go/quic-go v0.50.1
 	github.com/sasha-s/go-deadlock v0.3.5
@@ -114,6 +114,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.22.2 // indirect
 	github.com/opencontainers/runtime-spec v1.2.0 // indirect
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
+	github.com/panjf2000/ants/v2 v2.11.3 // indirect
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
 	github.com/petermattis/goid v0.0.0-20240813172612-4fcff4a6cae7 // indirect
 	github.com/pion/datachannel v1.5.10 // indirect

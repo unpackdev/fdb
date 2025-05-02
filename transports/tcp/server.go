@@ -2,10 +2,10 @@
 package tcp
 
 import (
+	"bytes"
 	"context"
-
-	"github.com/unpackdev/fdb/transports"
-
+	"encoding/binary"
+	"fmt"
 	"io"
 	"net"
 	"strings"
@@ -16,6 +16,7 @@ import (
 	"github.com/unpackdev/fdb/config"
 	"github.com/unpackdev/fdb/logger"
 	"github.com/unpackdev/fdb/observability"
+	"github.com/unpackdev/fdb/transports" // Added transports import
 	"github.com/unpackdev/fdb/types"
 
 	"github.com/panjf2000/gnet/v2"
@@ -285,6 +286,90 @@ func (s *Server) OnTraffic(c gnet.Conn) (action gnet.Action) {
 		return gnet.None
 	}
 
+	// Debug the data received
+	fmt.Printf("SERVER RECEIVED PACKET - Size: %d bytes\n", len(data))
+	if len(data) >= 4 {
+		fmt.Printf("FIRST 4 BYTES: %v\n", data[:4])
+	}
+
+	// First check if we're continuing a chunked message reassembly
+	if ctx.ChunkedMessageInfo != nil {
+		// Add new data to the buffer
+		ctx.ChunkedMessageInfo.Buffer.Write(data)
+		ctx.ChunkedMessageInfo.CurrentSize += uint32(len(data))
+
+		s.logger.Debug("Continuing chunked message reassembly",
+			zap.Int("chunk_size", len(data)),
+			zap.Uint32("current_size", ctx.ChunkedMessageInfo.CurrentSize),
+			zap.Uint32("total_size", ctx.ChunkedMessageInfo.TotalSize))
+
+		// Check if we've received the complete message
+		if ctx.ChunkedMessageInfo.CurrentSize >= ctx.ChunkedMessageInfo.TotalSize {
+			// We have the complete message, use it for processing
+			s.logger.Debug("Chunked message reassembly complete",
+				zap.Uint32("final_size", ctx.ChunkedMessageInfo.CurrentSize))
+
+			// Use the reassembled data for further processing
+			data = ctx.ChunkedMessageInfo.Buffer.Bytes()
+
+			// Reset chunked message state
+			ctx.ChunkedMessageInfo = nil
+		} else {
+			// Still waiting for more chunks
+			return gnet.None
+		}
+	} else {
+		// Check if this is the start of a new chunked message protocol (for large payloads)
+		if len(data) >= 4 {
+			// First try to parse as a regular message
+			_, firstParseErr := s.parseFrameType(data)
+
+			// If this fails, it might be our chunked protocol
+			if firstParseErr != nil {
+				// Check if we have a length prefix (potentially a chunked message)
+				totalSize := binary.LittleEndian.Uint32(data[:4])
+
+				// If the size seems reasonable (more than current data but not absurdly large)
+				if totalSize > uint32(len(data)-4) && totalSize < 10*1024*1024 { // 10MB sanity limit
+					// This looks like a chunked message
+					s.logger.Debug("Detected chunked message protocol",
+						zap.Uint32("expected_total_size", totalSize),
+						zap.Int("current_data_size", len(data)-4))
+
+					// Start reassembly process - read all chunks until we have full message
+					reassemblyBuffer := bytes.NewBuffer(make([]byte, 0, totalSize))
+
+					// Add initial data (skipping 4-byte prefix)
+					reassemblyBuffer.Write(data[4:])
+					currentSize := reassemblyBuffer.Len()
+
+					// If we don't have all the data yet, store the state and return
+					if uint32(currentSize) < totalSize {
+						// Store reassembly state in connection context
+						ctx.ChunkedMessageInfo = &ChunkedMessageInfo{
+							TotalSize:   totalSize,
+							CurrentSize: uint32(currentSize),
+							Buffer:      reassemblyBuffer,
+						}
+
+						s.logger.Debug("Chunked message incomplete, waiting for more data",
+							zap.Int("current_size", currentSize),
+							zap.Uint32("expected_size", totalSize),
+							zap.Int("remaining", int(totalSize)-currentSize))
+
+						// Return None to wait for more data
+						return gnet.None
+					} else {
+						// We have the complete message in one go, use it for processing
+						data = reassemblyBuffer.Bytes()
+						s.logger.Debug("Chunked message complete in single read",
+							zap.Int("final_size", len(data)))
+					}
+				}
+			}
+		}
+	}
+
 	// Parse the action type
 	handlerType, err := s.parseFrameType(data)
 	if err != nil {
@@ -304,11 +389,8 @@ func (s *Server) OnTraffic(c gnet.Conn) (action gnet.Action) {
 		return gnet.None
 	}
 
-	// Extract the frame (excluding the ProtocolType byte)
-	frame := data[1:]
-
 	// Dispatch to the handler
-	handler.Handle(ctx.Conn, frame)
+	handler.Handle(ctx.Conn, data)
 	return gnet.None
 }
 

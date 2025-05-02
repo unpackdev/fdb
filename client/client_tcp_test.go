@@ -2,21 +2,21 @@ package client_test
 
 import (
 	"context"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/panjf2000/gnet/v2"
 	"github.com/unpackdev/fdb/client"
+	"github.com/unpackdev/fdb/logger"
 	"github.com/unpackdev/fdb/messages"
 	"github.com/unpackdev/fdb/types"
-	"go.uber.org/zap"
 )
 
 func TestTCPClientSendMessage(t *testing.T) {
 	ctx := context.Background()
-	logger, _ := zap.NewDevelopment()
 
 	// Create configuration
 	cfg := client.NewConfig()
@@ -25,7 +25,7 @@ func TestTCPClientSendMessage(t *testing.T) {
 	c := client.NewClient(ctx, cfg)
 
 	// Create a new TCP transport with gnet options
-	tcpTransport := client.NewTCPTransport("127.0.0.1:5011", logger,
+	tcpTransport := client.NewTCPTransport("127.0.0.1:5011", logger.G(),
 		gnet.WithMulticore(true),
 		gnet.WithTCPNoDelay(gnet.TCPNoDelay),
 	)

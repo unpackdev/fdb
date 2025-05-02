@@ -2,34 +2,45 @@ package client
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/panjf2000/gnet/v2"
+	"github.com/unpackdev/fdb/logger"
+	"github.com/unpackdev/fdb/types"
 	"go.uber.org/zap"
 )
 
+// bufferSize defines the size of the read buffer
+const bufferSize = 128 * 1024 // 128KB buffer
+
 // TCPTransport implements the Transport interface using gnet
 type TCPTransport struct {
-	address  string
-	opts     []gnet.Option
-	handlers map[MessageType]HandlerFunc
-	client   *gnet.Client
-	conn     gnet.Conn
-	mu       sync.Mutex
-	ctx      context.Context
-	cancel   context.CancelFunc
-	logger   *zap.Logger
+	address         string
+	opts            []gnet.Option
+	handlers        map[MessageType]HandlerFunc
+	client          *gnet.Client
+	conn            gnet.Conn
+	mu              sync.Mutex
+	ctx             context.Context
+	cancel          context.CancelFunc
+	logger          logger.Logger
+	responseHandler *ResponseHandler
 }
 
 // NewTCPTransport creates a new TCPTransport
-func NewTCPTransport(address string, logger *zap.Logger, opts ...gnet.Option) *TCPTransport {
+func NewTCPTransport(address string, logger logger.Logger, opts ...gnet.Option) *TCPTransport {
+	// Default response timeout of 30 seconds
+	defaultTimeout := 30 * time.Second
 	return &TCPTransport{
-		address:  address,
-		opts:     opts,
-		handlers: make(map[MessageType]HandlerFunc),
-		logger:   logger,
+		address:         address,
+		opts:            opts,
+		handlers:        make(map[MessageType]HandlerFunc),
+		logger:          logger,
+		responseHandler: NewResponseHandler(defaultTimeout),
 	}
 }
 
@@ -87,7 +98,40 @@ func (t *TCPTransport) Close() error {
 
 // RegisterHandler registers a handler for a specific message type
 func (t *TCPTransport) RegisterHandler(messageType MessageType, handler HandlerFunc) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	t.handlers[messageType] = handler
+}
+
+// RegisterResponseChannel registers a channel to receive a response for a specific message type
+// and returns the channel that will receive the response
+func (t *TCPTransport) RegisterResponseChannel(messageType MessageType) chan []byte {
+	return t.responseHandler.RegisterChannel(messageType)
+}
+
+// RegisterResponseCallback registers a callback function to handle a response for a specific message type
+func (t *TCPTransport) RegisterResponseCallback(messageType MessageType, callback ResponseCallback) {
+	t.responseHandler.RegisterCallback(messageType, callback)
+}
+
+// WaitForResponse waits for a response on the given channel with the default timeout
+func (t *TCPTransport) WaitForResponse(ch chan []byte) ([]byte, error) {
+	return t.responseHandler.WaitForResponse(ch)
+}
+
+// WaitForResponseWithTimeout waits for a response on the given channel with a custom timeout
+func (t *TCPTransport) WaitForResponseWithTimeout(ch chan []byte, timeout time.Duration) ([]byte, error) {
+	return t.responseHandler.WaitForResponseWithTimeout(ch, timeout)
+}
+
+// UnregisterResponseChannel removes a response channel for a specific message type
+func (t *TCPTransport) UnregisterResponseChannel(messageType MessageType) {
+	t.responseHandler.UnregisterChannel(messageType)
+}
+
+// UnregisterResponseCallback removes a callback for a specific message type
+func (t *TCPTransport) UnregisterResponseCallback(messageType MessageType) {
+	t.responseHandler.UnregisterCallback(messageType)
 }
 
 // tcpEventHandler implements gnet.EventHandler for the TCPTransport
@@ -120,27 +164,156 @@ func (h *tcpEventHandler) OnClose(c gnet.Conn, err error) gnet.Action {
 	return gnet.None
 }
 
+// pendingLargeResponse holds state for multi-packet response reassembly
+type pendingResponse struct {
+	expectedSize uint32
+	currentSize  uint32
+	buffer       []byte
+	messageType  MessageType
+}
+
+// global state for tracking multi-packet response reassembly
+var pendingResp *pendingResponse
+
 // OnTraffic is called when data is received
 func (h *tcpEventHandler) OnTraffic(c gnet.Conn) gnet.Action {
-	data, err := c.Next(-1)
-	if err != nil {
-		h.transport.logger.Error("Error reading data", zap.Error(err))
-		return gnet.Close
+	// Create a buffer to hold the complete message
+	buf := make([]byte, 0, bufferSize)
+
+	// Read data in a loop until we have the complete message
+	for {
+		// Read the next chunk of data
+		chunk, err := c.Next(-1)
+		if err != nil {
+			h.transport.logger.Error("Error reading data", zap.Error(err))
+			return gnet.Close
+		}
+
+		// If no more data, break out of loop
+		if len(chunk) == 0 {
+			break
+		}
+
+		// Append the chunk to our buffer
+		buf = append(buf, chunk...)
+
+		// If we received less than what would fill a typical buffer,
+		// we've likely received the complete message for now
+		if len(chunk) < 4096 {
+			break
+		}
 	}
 
-	if len(data) < 1 {
+	data := buf
+
+	// Handle the case where we didn't receive any data
+	if len(data) == 0 {
 		h.transport.logger.Warn("Received empty data")
 		return gnet.None
 	}
 
-	messageType := MessageType(data[0])
-	handler, exists := h.transport.handlers[messageType]
-	if exists {
-		if err := handler(c, data[1:]); err != nil {
-			h.transport.logger.Error("Handler error", zap.Error(err))
+	// Check if we're continuing a large response reassembly
+	if pendingResp != nil {
+		// This is a continuation packet of a large response
+		h.transport.logger.Debug("Continuing response reassembly",
+			zap.Int("chunk_size", len(data)),
+			zap.Uint32("current_size", pendingResp.currentSize),
+			zap.Uint32("expected_size", pendingResp.expectedSize))
+
+		// Append the new data to our buffer
+		pendingResp.buffer = append(pendingResp.buffer, data...)
+		pendingResp.currentSize += uint32(len(data))
+
+		// Check if we have the complete message
+		if pendingResp.currentSize >= pendingResp.expectedSize {
+			// We have the complete message
+			h.transport.logger.Debug("Response reassembly complete",
+				zap.Uint32("final_size", pendingResp.currentSize),
+				zap.Uint64("type", pendingResp.messageType.Uint64()))
+
+			// Use the reassembled data for processing
+			messageType := pendingResp.messageType
+
+			// Create a complete response with proper header
+			// Format: [status_byte(1)][length(4)][data...]
+			completeResponse := make([]byte, 5+len(pendingResp.buffer))
+			completeResponse[0] = byte(messageType) // Status byte
+
+			// Set the length field to the actual data length
+			binary.BigEndian.PutUint32(completeResponse[1:5], uint32(len(pendingResp.buffer)))
+
+			// Copy the data portion
+			copy(completeResponse[5:], pendingResp.buffer)
+
+			// Reset pending response state
+			pendingResp = nil
+
+			// Handle the complete message - note we pass the full responseData[1:]
+			// because HandleResponse expects everything after the message type
+			handled := h.transport.responseHandler.HandleResponse(messageType, completeResponse[1:])
+			if !handled {
+				h.transport.logger.Warn("No handler for reassembled message type",
+					zap.Uint64("type", messageType.Uint64()))
+			}
+
+			return gnet.None
+		} else {
+			// Still waiting for more data
+			return gnet.None
 		}
-	} else {
-		h.transport.logger.Warn("No handler for message type", zap.Uint64("type", messageType.Uint64()))
+	}
+
+	// Get the message type from the first byte
+	messageType := MessageType(data[0])
+
+	// Log in a more concise format, showing size, type and preview of first bytes
+	h.transport.logger.Debug("Received data",
+		zap.Int("size", len(data)),
+		zap.Uint64("type", messageType.Uint64()),
+		zap.String("first_bytes", fmt.Sprintf("%v", data[:min(10, len(data))])))
+
+	// For Success response messages, we need to check if this might be a large response
+	if messageType == MessageType(types.HandlerStatusSuccess.Byte()) && len(data) >= 5 {
+		// DB responses include a 4-byte length field after the status byte
+		// Format: [status_byte(1)][length(4)][data...]
+		expectedLength := binary.BigEndian.Uint32(data[1:5])
+		actualDataLength := len(data) - 5 // subtract header bytes
+
+		// If this seems to be a partial response for a large packet
+		if expectedLength > uint32(actualDataLength) {
+			h.transport.logger.Debug("Detected partial response",
+				zap.Uint32("expected_size", expectedLength),
+				zap.Int("received_size", actualDataLength))
+
+			// Start response reassembly process
+			pendingResp = &pendingResponse{
+				expectedSize: expectedLength,
+				currentSize:  uint32(actualDataLength),
+				buffer:       data[5:], // Store just the data portion, skip the header
+				messageType:  messageType,
+			}
+
+			// Wait for more data
+			return gnet.None
+		}
+	}
+
+	// Extract the payload (everything after the message type byte)
+	payload := data[1:]
+
+	// First try to handle it with the response handler
+	handled := h.transport.responseHandler.HandleResponse(messageType, payload)
+
+	// If not handled by response handler, try the traditional handlers
+	if !handled {
+		handler, exists := h.transport.handlers[messageType]
+		if exists {
+			if err := handler(c, payload); err != nil {
+				h.transport.logger.Error("Handler error", zap.Error(err))
+			}
+		} else {
+			h.transport.logger.Warn("No handler for message type", zap.Uint64("type", messageType.Uint64()))
+		}
 	}
 
 	return gnet.None
@@ -148,6 +321,5 @@ func (h *tcpEventHandler) OnTraffic(c gnet.Conn) gnet.Action {
 
 // OnTick is called periodically
 func (h *tcpEventHandler) OnTick() (time.Duration, gnet.Action) {
-	// Implement if needed
 	return time.Second, gnet.None
 }

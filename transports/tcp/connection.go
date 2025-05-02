@@ -3,6 +3,7 @@ package tcp
 
 import (
 	"encoding/binary"
+	"fmt"
 
 	"github.com/panjf2000/gnet/v2"
 )
@@ -24,6 +25,11 @@ func (c *Connection) Conn() gnet.Conn {
 // Send sends data to the connection without additional framing.
 // Since the custom OnTraffic handler handles raw HTTP, no length prefix or protocol type byte is needed.
 func (c *Connection) Send(data []byte) error {
+	fmt.Printf("[DEBUG-CONN] Connection.Send called with data length %d\n", len(data))
+	if c.conn == nil {
+		fmt.Println("[DEBUG-CONN] ERROR - Connection.conn is nil!")
+		return fmt.Errorf("connection is nil")
+	}
 	return c.conn.AsyncWrite(data, nil)
 }
 

@@ -2,9 +2,10 @@ package config
 
 import (
 	"fmt"
+	"os"
+
 	"github.com/unpackdev/fdb/types"
 	"gopkg.in/yaml.v3"
-	"os"
 )
 
 var global *Config

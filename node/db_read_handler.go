@@ -1,10 +1,14 @@
 package node
 
 import (
+	"fmt"
+
 	"github.com/unpackdev/fdb/db"
 	"github.com/unpackdev/fdb/logger"
 	"github.com/unpackdev/fdb/observability"
+	"github.com/unpackdev/fdb/packets"
 	"github.com/unpackdev/fdb/transports"
+	"github.com/unpackdev/fdb/types"
 
 	"go.uber.org/zap"
 )
@@ -38,11 +42,18 @@ func (rh *DbReadHandler) Handle(conn transports.Connection, frame []byte) {
 			zap.Int("expected", 33),
 		)
 
-		// Error format: [status byte = 1][error message]
+		// Create an error response using packets.DBResponse
 		errorMsg := "Invalid message format"
-		response := make([]byte, 1+len(errorMsg))
-		response[0] = 1 // Error status
-		copy(response[1:], errorMsg)
+
+		// Create a DBResponse with error status
+		dbResp := &packets.DBResponse{
+			Status: types.HandlerStatusError,
+			Length: uint32(len(errorMsg)),
+			Data:   []byte(errorMsg),
+		}
+
+		// Encode the response to bytes
+		response := dbResp.Encode()
 		conn.Send(response)
 		return
 	}
@@ -63,11 +74,18 @@ func (rh *DbReadHandler) Handle(conn transports.Connection, frame []byte) {
 			zap.Binary("key", key),
 		)
 
-		// Error format: [status byte = 1][error message]
+		// Create an error response using packets.DBResponse
 		errorMsg := "Error reading from database"
-		response := make([]byte, 1+len(errorMsg))
-		response[0] = 1 // Error status
-		copy(response[1:], errorMsg)
+
+		// Create a DBResponse with error status
+		dbResp := &packets.DBResponse{
+			Status: types.HandlerStatusError,
+			Length: uint32(len(errorMsg)),
+			Data:   []byte(errorMsg),
+		}
+
+		// Encode the response to bytes
+		response := dbResp.Encode()
 		conn.Send(response)
 		return
 	}
@@ -78,21 +96,33 @@ func (rh *DbReadHandler) Handle(conn transports.Connection, frame []byte) {
 			zap.Binary("key", key),
 		)
 
-		// Error format: [status byte = 1][error message]
+		// Create an error response using packets.DBResponse
 		errorMsg := "No value found for key"
-		response := make([]byte, 1+len(errorMsg))
-		response[0] = 1 // Error status
-		copy(response[1:], errorMsg)
+
+		// Create a DBResponse with error status
+		dbResp := &packets.DBResponse{
+			Status: types.HandlerStatusError,
+			Length: uint32(len(errorMsg)),
+			Data:   []byte(errorMsg),
+		}
+
+		// Encode the response to bytes
+		response := dbResp.Encode()
 		conn.Send(response)
 		return
 	}
 
-	// Create a response buffer with:  [status byte][value...]
-	response := make([]byte, 1+len(value))
-	// Set status byte (0 = success)
-	response[0] = 0
-	// Copy the value after the status byte
-	copy(response[1:], value)
+	// Create a success response using packets.DBResponse
+	dbResp := &packets.DBResponse{
+		Status: types.HandlerStatusSuccess,
+		Length: uint32(len(value)),
+		Data:   value,
+	}
+
+	// Encode the response to bytes
+	response := dbResp.Encode()
+
+	fmt.Println("SENDING RESPONSE PREFIX", response[0:10], "with status byte:", response[0], "data length:", dbResp.Length)
 
 	// Send the formatted response back to the client
 	conn.Send(response)
