@@ -9,11 +9,11 @@ import (
 
 func PongHandler(logger logger.Logger) func(s network.Stream) {
 	return func(s network.Stream) {
-		logger.Debug(
-			"Received new stream",
-			zap.String("protocol", string(s.Protocol())),
-			zap.String("from_peer_id", s.Conn().RemotePeer().String()),
-		)
+		// logger.Debug(
+		// 	"Received new stream",
+		// 	zap.String("protocol", string(s.Protocol())),
+		// 	zap.String("from_peer_id", s.Conn().RemotePeer().String()),
+		// )
 		defer s.Close()
 
 		buf := make([]byte, 1024)
@@ -24,18 +24,18 @@ func PongHandler(logger logger.Logger) func(s network.Stream) {
 		}
 
 		request := string(buf[:nBytes])
-		logger.Debug(
-			"Received request",
-			zap.String("request", request),
-			zap.String("from_peer_id", s.Conn().RemotePeer().String()),
-		)
+		// logger.Debug(
+		// 	"Received request",
+		// 	zap.String("request", request),
+		// 	zap.String("from_peer_id", s.Conn().RemotePeer().String()),
+		// )
 
 		if request == "ping" {
 			_, err := s.Write([]byte("pong"))
 			if err != nil {
 				logger.Warn("Error writing to stream", zap.Error(err))
 			} else {
-				logger.Debug("Responded with pong", zap.String("to_peer_id", s.Conn().RemotePeer().String()))
+				//logger.Debug("Responded with pong", zap.String("to_peer_id", s.Conn().RemotePeer().String()))
 			}
 		}
 	}

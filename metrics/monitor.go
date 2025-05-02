@@ -4,11 +4,12 @@ package metrics
 
 import (
 	"context"
-	"github.com/unpackdev/fdb/logger"
-	"github.com/unpackdev/fdb/observability"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/unpackdev/fdb/logger"
+	"github.com/unpackdev/fdb/observability"
 
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -88,13 +89,13 @@ func (pm *PerformanceMonitor) Start() {
 				return
 			case <-ticker.C:
 				peers := pm.host.Network().Peers()
-				pm.logger.Debug("Collected peers to ping", zap.Int("peer_count", len(peers)))
+				//pm.logger.Debug("Collected peers to ping", zap.Int("peer_count", len(peers)))
 				for _, p := range peers {
 					if p == pm.host.ID() {
 						continue // Skip self
 					}
 
-					pm.logger.Debug("Adding peer to ping channel", zap.String("peer_id", p.String()))
+					//pm.logger.Debug("Adding peer to ping channel", zap.String("peer_id", p.String()))
 					select {
 					case peerChan <- p:
 					default:
@@ -136,7 +137,7 @@ func (pm *PerformanceMonitor) worker(peerChan <-chan peer.ID) {
 // pingPeer sends a ping to a peer and collects metrics.
 func (pm *PerformanceMonitor) pingPeer(p peer.ID) {
 	start := time.Now()
-	pm.logger.Debug("Pinging peer", zap.String("peer_id", p.String()))
+	//pm.logger.Debug("Pinging peer", zap.String("peer_id", p.String()))
 	ctx, cancel := context.WithTimeout(pm.ctx, pm.metricsTimeout)
 	defer cancel()
 
@@ -194,7 +195,7 @@ func (pm *PerformanceMonitor) pingPeer(p peer.ID) {
 	}
 
 	response := string(buf[:n])
-	pm.logger.Debug("Received response from peer", zap.String("peer_id", p.String()), zap.String("response", response))
+	//pm.logger.Debug("Received response from peer", zap.String("peer_id", p.String()), zap.String("response", response))
 	if response != "pong" {
 		pm.logger.Warn("Invalid pong response",
 			zap.String("peer_id", p.String()),
@@ -213,7 +214,7 @@ func (pm *PerformanceMonitor) pingPeer(p peer.ID) {
 	pm.collector.UpdateResponsiveness(p, latency, true)
 	pm.collector.UpdateReliability(p, true)
 
-	pm.logger.Debug("Received pong from peer", zap.String("peer_id", p.String()), zap.Float64("latency", latency))
+	//pm.logger.Debug("Received pong from peer", zap.String("peer_id", p.String()), zap.Float64("latency", latency))
 }
 
 // cleanupRoutine periodically removes old metrics to prevent memory bloat.
