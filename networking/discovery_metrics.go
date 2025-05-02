@@ -20,6 +20,12 @@ type DiscoveryMetrics struct {
 	BootstrapPeersFailed       metric.Int64Counter
 	ActivePeers                metric.Int64UpDownCounter
 	PeersRemovedTotal          metric.Int64Counter
+	
+	// MDNS-specific metrics
+	MdnsPeersDiscoveredTotal   metric.Int64Counter
+	MdnsPeersLostTotal         metric.Int64Counter
+	MdnsConnectionSuccessTotal metric.Int64Counter
+	MdnsConnectionFailedTotal  metric.Int64Counter
 }
 
 // InitializeDiscoveryMetrics initializes the metrics instruments.
@@ -93,6 +99,35 @@ func InitializeDiscoveryMetrics(ctx context.Context, meter metric.Meter) (*Disco
 		return nil, err
 	}
 
+	// MDNS-specific metrics
+	m.MdnsPeersDiscoveredTotal, err = meter.Int64Counter("networking.discovery.mdns_peers_discovered_total",
+		metric.WithDescription("Total number of peers discovered via mDNS"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	m.MdnsPeersLostTotal, err = meter.Int64Counter("networking.discovery.mdns_peers_lost_total",
+		metric.WithDescription("Total number of peers lost via mDNS"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	m.MdnsConnectionSuccessTotal, err = meter.Int64Counter("networking.discovery.mdns_connection_success_total",
+		metric.WithDescription("Total number of successful mDNS peer connections"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	m.MdnsConnectionFailedTotal, err = meter.Int64Counter("networking.discovery.mdns_connection_failed_total",
+		metric.WithDescription("Total number of failed mDNS peer connection attempts"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return m, nil
 }
 
@@ -140,4 +175,24 @@ func (m *DiscoveryMetrics) RecordActivePeers(ctx context.Context, delta int64) {
 // RecordPeersRemoved increments the PeersRemovedTotal counter.
 func (m *DiscoveryMetrics) RecordPeersRemoved(ctx context.Context, count int64) {
 	m.PeersRemovedTotal.Add(ctx, count)
+}
+
+// RecordMdnsPeerDiscovered increments the MdnsPeersDiscoveredTotal counter.
+func (m *DiscoveryMetrics) RecordMdnsPeerDiscovered(ctx context.Context, count int64) {
+	m.MdnsPeersDiscoveredTotal.Add(ctx, count)
+}
+
+// RecordMdnsPeerLost increments the MdnsPeersLostTotal counter.
+func (m *DiscoveryMetrics) RecordMdnsPeerLost(ctx context.Context, count int64) {
+	m.MdnsPeersLostTotal.Add(ctx, count)
+}
+
+// RecordMdnsConnectionSuccess increments the MdnsConnectionSuccessTotal counter.
+func (m *DiscoveryMetrics) RecordMdnsConnectionSuccess(ctx context.Context, count int64) {
+	m.MdnsConnectionSuccessTotal.Add(ctx, count)
+}
+
+// RecordMdnsConnectionFailed increments the MdnsConnectionFailedTotal counter.
+func (m *DiscoveryMetrics) RecordMdnsConnectionFailed(ctx context.Context, count int64) {
+	m.MdnsConnectionFailedTotal.Add(ctx, count)
 }

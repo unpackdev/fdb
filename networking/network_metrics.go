@@ -16,6 +16,12 @@ type P2PMetrics struct {
 	MessageLatencySeconds metric.Float64Histogram
 	ActivePeers           metric.Int64UpDownCounter
 	PeersRemovedTotal     metric.Int64Counter
+	// Network throughput metrics
+	BytesSentTotal        metric.Int64Counter
+	BytesReceivedTotal    metric.Int64Counter
+	// Connection performance metrics
+	ConnectionEstablishTimeSeconds metric.Float64Histogram
+	ConnectionRetryTotal          metric.Int64Counter
 }
 
 // InitializeP2PMetrics initializes the metrics instruments for P2PNetwork.
@@ -83,6 +89,40 @@ func InitializeP2PMetrics(ctx context.Context, meter metric.Meter) (*P2PMetrics,
 		return nil, err
 	}
 
+	// Initialize Network Throughput Metrics
+	m.BytesSentTotal, err = meter.Int64Counter(
+		"networking.p2p.bytes_sent_total",
+		metric.WithDescription("Total number of bytes sent over the P2P network"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	m.BytesReceivedTotal, err = meter.Int64Counter(
+		"networking.p2p.bytes_received_total",
+		metric.WithDescription("Total number of bytes received over the P2P network"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Initialize Connection Performance Metrics
+	m.ConnectionEstablishTimeSeconds, err = meter.Float64Histogram(
+		"networking.p2p.connection_establish_time_seconds",
+		metric.WithDescription("Time taken to establish P2P connections in seconds"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	m.ConnectionRetryTotal, err = meter.Int64Counter(
+		"networking.p2p.connection_retry_total",
+		metric.WithDescription("Total number of connection retry attempts"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return m, nil
 }
 
@@ -120,4 +160,24 @@ func (m *P2PMetrics) RecordActivePeers(ctx context.Context, delta int64) {
 // RecordPeersRemoved increments the PeersRemovedTotal counter.
 func (m *P2PMetrics) RecordPeersRemoved(ctx context.Context, count int64) {
 	m.PeersRemovedTotal.Add(ctx, count)
+}
+
+// RecordBytesSent increments the BytesSentTotal counter.
+func (m *P2PMetrics) RecordBytesSent(ctx context.Context, byteCount int64) {
+	m.BytesSentTotal.Add(ctx, byteCount)
+}
+
+// RecordBytesReceived increments the BytesReceivedTotal counter.
+func (m *P2PMetrics) RecordBytesReceived(ctx context.Context, byteCount int64) {
+	m.BytesReceivedTotal.Add(ctx, byteCount)
+}
+
+// RecordConnectionEstablishTime records the time taken to establish a P2P connection.
+func (m *P2PMetrics) RecordConnectionEstablishTime(ctx context.Context, duration time.Duration) {
+	m.ConnectionEstablishTimeSeconds.Record(ctx, duration.Seconds())
+}
+
+// RecordConnectionRetry increments the ConnectionRetryTotal counter.
+func (m *P2PMetrics) RecordConnectionRetry(ctx context.Context, count int64) {
+	m.ConnectionRetryTotal.Add(ctx, count)
 }

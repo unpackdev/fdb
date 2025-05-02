@@ -30,8 +30,6 @@ node:
   # multiple nodes and role types and making things even more confusing than it is.
   roles:
     - node
-    - sequencer
-    - validator
 
 
 # ======================================================================================
@@ -46,16 +44,16 @@ identity:
 # P2P NETWORKING RELATED CONFIGURATION
 # ======================================================================================
 networking:
-  peerId: "12D3KooWK2kJYjJZs23UCv9KqxNxgtu19xgipQsKbrXDsfsLestN"
+  peerId: "12D3KooWJwvXTmBGQ5MeqVBwnU18WgUdAnJtZwuLKN2wasUVoiq3"
   listenAddrs:  # Changed from single port to multiple listen addresses
-    - "/ip4/0.0.0.0/tcp/8432"               # Listen on all TCP IPv4 interfaces
-    - "/ip6/::/tcp/8432"                    # Listen on all TCP IPv6 interfaces
-    - "/ip4/0.0.0.0/udp/8432"               # Listen on all UDP IPv4 interfaces
-    - "/ip6/::/udp/8432"                    # Listen on all UDP IPv6 interfaces
+    - "/ip4/0.0.0.0/tcp/8433"               # Listen on all TCP IPv4 interfaces
+    - "/ip6/::/tcp/8433"                    # Listen on all TCP IPv6 interfaces
+    - "/ip4/0.0.0.0/udp/8433"               # Listen on all UDP IPv4 interfaces
+    - "/ip6/::/udp/8433"                    # Listen on all UDP IPv6 interfaces
   protocolId: "/fdb/1.0.0"                  # Unique protocol identifier
   bootstrapPeers:
-    - /ip4/127.0.0.1/tcp/8432/p2p/12D3KooWK2kJYjJZs23UCv9KqxNxgtu19xgipQsKbrXDsfsLestN # For bootstrap node it is here but will be ignored
-  bootstrapNode: true                        # Set to true if this node is the bootstrap node in the network.
+    - /ip4/127.0.0.1/tcp/8432/p2p/12D3KooWK2kJYjJZs23UCv9KqxNxgtu19xgipQsKbrXDsfsLestN # Connect to the first node
+  bootstrapNode: false                       # This is a regular node, not a bootstrap node
   mdns: true                                 # Enable or disable Multicast DNS (mDNS) discovery.
   enableRelay: true                          # Enable relay connections if needed.
   interface_name: "en0"                      # Network interface name for eBPF (if applicable)
@@ -89,7 +87,7 @@ transports:
     enabled: true
     config:
       ipv4: 127.0.0.1
-      port: 5011
+      port: 5012
       tls:
         insecure: true
         key: ./data/certs/key.pem
@@ -114,7 +112,7 @@ rpc:
     enabled: true
     type: "tcp"
     ipv4: 0.0.0.0
-    port: 8845
+    port: 8846
 
 # ======================================================================================
 # OBSERVABILITY CONFIGURATION (Metrics and Tracing)
@@ -122,7 +120,7 @@ rpc:
 pprof:
   - name: fdb
     enabled: true
-    addr: "0.0.0.0:6060"
+    addr: "0.0.0.0:6061"
 
 # ======================================================================================
 # OBSERVABILITY CONFIGURATION (Metrics and Tracing)

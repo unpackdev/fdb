@@ -89,6 +89,15 @@ func (mdns *MdnsNotifier) SetPeerDisconnectedCallback(callback PeerDisconnectedC
 // HandlePeerFound is called when a new peer is discovered via mDNS.
 // It attempts to connect to the discovered peer and invokes the appropriate callbacks.
 func (mdns *MdnsNotifier) HandlePeerFound(pi peer.AddrInfo) {
+	startTime := time.Now()
+	
+	// Record metrics for MDNS peer discovery
+	if mdns.n.discovery != nil && mdns.n.discovery.Metrics != nil {
+		mdns.n.discovery.Metrics.RecordMdnsPeerDiscovered(mdns.n.ctx, 1)
+		mdns.n.discovery.Metrics.RecordPeersDiscovered(mdns.n.ctx, 1)
+		mdns.n.discovery.Metrics.RecordDiscoveryLatency(mdns.n.ctx, time.Since(startTime))
+	}
+	
 	mdns.n.Logger.Info("mDNS discovery found peer",
 		zap.String("peer_id", pi.ID.String()),
 		zap.Strings("addresses", addrStrings(pi.Addrs)),
@@ -135,6 +144,13 @@ func (mdns *MdnsNotifier) HandlePeerFound(pi peer.AddrInfo) {
 // HandlePeerLost is called when a previously discovered peer is no longer reachable via mDNS.
 // It invokes all registered disconnection callbacks.
 func (mdns *MdnsNotifier) HandlePeerLost(pi peer.AddrInfo) {
+	// Record metrics for lost MDNS peers
+	if mdns.n.discovery != nil && mdns.n.discovery.Metrics != nil {
+		mdns.n.discovery.Metrics.RecordMdnsPeerLost(mdns.n.ctx, 1)
+		// Also update active peers count - decrease by 1 since we lost a peer
+		mdns.n.discovery.Metrics.RecordActivePeers(mdns.n.ctx, -1)
+	}
+
 	mdns.n.Logger.Info("mDNS discovery lost peer",
 		zap.String("peer_id", pi.ID.String()),
 		zap.Strings("addresses", addrStrings(pi.Addrs)),
@@ -150,6 +166,11 @@ func (mdns *MdnsNotifier) HandlePeerLost(pi peer.AddrInfo) {
 
 // invokeConnectionFailedCallbacks safely invokes all registered failure callbacks.
 func (mdns *MdnsNotifier) invokeConnectionFailedCallbacks(ctx context.Context, pi peer.AddrInfo, err error) {
+	// Record metrics for failed MDNS connections
+	if mdns.n.discovery != nil && mdns.n.discovery.Metrics != nil {
+		mdns.n.discovery.Metrics.RecordMdnsConnectionFailed(ctx, 1)
+	}
+
 	mdns.mutex.RLock()
 	defer mdns.mutex.RUnlock()
 	for _, callback := range mdns.peerConnectionFailedCallbacks {
@@ -160,6 +181,11 @@ func (mdns *MdnsNotifier) invokeConnectionFailedCallbacks(ctx context.Context, p
 
 // invokeConnectionSuccessCallbacks safely invokes all registered success callbacks.
 func (mdns *MdnsNotifier) invokeConnectionSuccessCallbacks(ctx context.Context, pi peer.AddrInfo) {
+	// Record metrics for successful MDNS connections
+	if mdns.n.discovery != nil && mdns.n.discovery.Metrics != nil {
+		mdns.n.discovery.Metrics.RecordMdnsConnectionSuccess(ctx, 1)
+	}
+
 	mdns.mutex.RLock()
 	defer mdns.mutex.RUnlock()
 	for _, callback := range mdns.peerConnectedCallbacks {

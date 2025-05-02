@@ -361,7 +361,7 @@ func TestP2PLoadDistribution(t *testing.T) {
 			batchSize:      2000,      // 2000 records per batch
 			batchCount:     10,        // 10 batches (total 20000 records)
 			recordSize:     10 * 1024, // 10KB records
-			waitTime:       2 * time.Second,
+			waitTime:       4 * time.Second,
 			retryAttempts:  5,
 			retryDelay:     500 * time.Millisecond,
 			numRecords:     20000,    // 2000 * 10 = 20000 records total

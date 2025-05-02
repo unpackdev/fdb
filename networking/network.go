@@ -314,6 +314,7 @@ func (n *Network) handleStream(s network.Stream) {
 			zap.ByteString("payload", networkPacket.Payload),
 		)
 		n.Metrics.RecordMessagesReceived(n.ctx, 1)
+		n.Metrics.RecordBytesReceived(n.ctx, int64(len(message)))
 		n.Metrics.RecordMessageLatency(n.ctx, time.Since(startTime))
 
 		// Invoke the appropriate handler
@@ -329,17 +330,20 @@ func (n *Network) ConnectPeerInfo(pi peer.AddrInfo) error {
 	if err := n.host.Connect(n.ctx, pi); err != nil {
 		n.Logger.Debug("Failed to connect to peer", zap.String("peer_id", pi.ID.String()), zap.Error(err))
 		n.Metrics.RecordPeersConnectionFailed(n.ctx, 1)
-		n.Metrics.RecordMessageLatency(n.ctx, time.Since(startTime))
+		// Record connection establishment time even for failed connections
+		n.Metrics.RecordConnectionEstablishTime(n.ctx, time.Since(startTime))
 		return fmt.Errorf("failed to connect to peer %s: %w", pi.ID, err)
 	}
 
+	connectionTime := time.Since(startTime)
 	n.Logger.Info("Connected to peer",
 		zap.String("peer_id", pi.ID.String()),
 		zap.Strings("addresses", addrStrings(pi.Addrs)),
+		zap.Duration("connection_time", connectionTime),
 	)
 	n.Metrics.RecordPeersConnected(n.ctx, 1)
 	n.Metrics.RecordActivePeers(n.ctx, 1)
-	n.Metrics.RecordMessageLatency(n.ctx, time.Since(startTime))
+	n.Metrics.RecordConnectionEstablishTime(n.ctx, connectionTime)
 
 	return nil
 }
@@ -364,17 +368,20 @@ func (n *Network) ConnectPeer(peerAddr string) error {
 	if err := n.host.Connect(n.ctx, *peerInfo); err != nil {
 		n.Logger.Warn("Failed to connect to peer", zap.String("peer_id", peerInfo.ID.String()), zap.Error(err))
 		n.Metrics.RecordPeersConnectionFailed(n.ctx, 1)
-		n.Metrics.RecordMessageLatency(n.ctx, time.Since(startTime))
+		// Record connection establishment time even for failed connections
+		n.Metrics.RecordConnectionEstablishTime(n.ctx, time.Since(startTime))
 		return fmt.Errorf("failed to connect to peer %s: %w", peerInfo.ID, err)
 	}
 
+	connectionTime := time.Since(startTime)
 	n.Logger.Info("Connected to peer",
 		zap.String("peer_id", peerInfo.ID.String()),
 		zap.Strings("addresses", addrStrings(peerInfo.Addrs)),
+		zap.Duration("connection_time", connectionTime),
 	)
 	n.Metrics.RecordPeersConnected(n.ctx, 1)
 	n.Metrics.RecordActivePeers(n.ctx, 1)
-	n.Metrics.RecordMessageLatency(n.ctx, time.Since(startTime))
+	n.Metrics.RecordConnectionEstablishTime(n.ctx, connectionTime)
 
 	return nil
 }
@@ -426,6 +433,7 @@ func (n *Network) SendMessage(ctx context.Context, protocolId protocol.ID, targe
 	// 	zap.ByteString("message", message),
 	// )
 	n.Metrics.RecordMessagesSent(ctx, 1)
+	n.Metrics.RecordBytesSent(ctx, int64(len(buffer.Bytes())))
 	n.Metrics.RecordMessageLatency(ctx, time.Since(startTime))
 
 	return nil
@@ -443,6 +451,7 @@ func (n *Network) BroadcastMessage(message []byte) error {
 
 	//n.Logger.Info("Broadcasted message", zap.ByteString("message", message))
 	n.Metrics.RecordMessagesSent(n.ctx, 1)
+	n.Metrics.RecordBytesSent(n.ctx, int64(len(message)))
 	n.Metrics.RecordMessageLatency(n.ctx, time.Since(startTime))
 
 	return nil
