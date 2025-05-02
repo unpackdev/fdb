@@ -30,7 +30,7 @@ services:
     ports:
       - "4317:4317"  # OTLP gRPC receiver
       - "4318:4318"  # OTLP HTTP receiver
-      - "55680:55680"  # OpenTelemetry protocol receiver
+      - "13133:13133"  # Health check endpoint
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
       - ./deployments/otel-collector-config.yaml:/etc/otel-collector-config.yaml  # Mounting custom config for OpenTelemetry collector
@@ -60,9 +60,9 @@ services:
     ports:
       - "9690:9090"
     volumes:
-      - ./deployments/prometheus.yml:/etc/prometheus/prometheus.yaml
+      - ./deployments/prometheus.yaml:/etc/prometheus/prometheus.yml
     command:
-      - '--config.file=/etc/prometheus/prometheus.yaml'
+      - '--config.file=/etc/prometheus/prometheus.yml'
 
 volumes:
   grafana-storage:

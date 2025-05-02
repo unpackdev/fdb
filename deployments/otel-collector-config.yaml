@@ -2,16 +2,38 @@ receivers:
   otlp:
     protocols:
       grpc:
+        endpoint: 0.0.0.0:4317
       http:
+        endpoint: 0.0.0.0:4318
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  pprof:
+  zpages:
 
 exporters:
   otlp:
-    endpoint: "http://jaeger:4317"
+    endpoint: "jaeger:14250"
     tls:
       insecure: true
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    namespace: "fdb"
+  debug:
+    verbosity: detailed
+
+processors:
+  batch:
 
 service:
+  extensions: [health_check, pprof, zpages]
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [otlp]
+      processors: [batch]
+      exporters: [otlp, debug]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus]

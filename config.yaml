@@ -132,13 +132,13 @@ pprof:
 observability:
   metrics:
     enable: true  # Enable or disable metrics collection.
-    endpoint: "0.0.0.0:4317"  # Endpoint for metrics collector.
+    endpoint: "localhost:4317"  # Endpoint for metrics collector.
     exportInterval: 15s  # Interval to export metrics data.
     useTLS: false  # Set this to false to disable TLS.
 
   tracing:
     enable: true  # Enable or disable tracing.
-    endpoint: "0.0.0.0:4317"  # Endpoint for tracing collector.
+    endpoint: "localhost:4317"  # Endpoint for tracing collector.
     headers: {}  # Additional headers for tracing requests.
     sampler: "always_on"  # Options: always_on, probability.
     samplingRate: 0.1  # Sampling rate for probabilistic sampling.
