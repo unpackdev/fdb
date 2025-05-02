@@ -16,6 +16,7 @@ import (
 	"github.com/unpackdev/fdb/config"
 	"github.com/unpackdev/fdb/logger"
 	"github.com/unpackdev/fdb/observability"
+	"github.com/unpackdev/fdb/packets"
 	"github.com/unpackdev/fdb/transports" // Added transports import
 	"github.com/unpackdev/fdb/types"
 
@@ -329,8 +330,7 @@ func (s *Server) OnTraffic(c gnet.Conn) (action gnet.Action) {
 				// Check if we have a length prefix (potentially a chunked message)
 				totalSize := binary.LittleEndian.Uint32(data[:4])
 
-				// If the size seems reasonable (more than current data but not absurdly large)
-				if totalSize > uint32(len(data)-4) && totalSize < 10*1024*1024 { // 10MB sanity limit
+				if totalSize > uint32(len(data)-4) {
 					// This looks like a chunked message
 					s.logger.Debug("Detected chunked message protocol",
 						zap.Uint32("expected_total_size", totalSize),
@@ -373,11 +373,27 @@ func (s *Server) OnTraffic(c gnet.Conn) (action gnet.Action) {
 	// Parse the action type
 	handlerType, err := s.parseFrameType(data)
 	if err != nil {
-		c.AsyncWrite([]byte("ERROR: Invalid action"), nil)
+		// Create a proper protocol-formatted error response
+		errorMsg := "ERROR: Invalid action"
+
+		// Create a DBResponse with error status
+		dbResp := &packets.DBResponse{
+			Status: types.HandlerStatusError,
+			Length: uint32(len(errorMsg)),
+			Data:   []byte(errorMsg),
+		}
+
+		// Encode the response to bytes
+		response := dbResp.Encode()
+
+		// Log the error for debugging
+		s.logger.Debug("Sending protocol-formatted error response",
+			zap.Int("response_size", len(response)),
+			zap.String("error_message", errorMsg))
+
+		c.AsyncWrite(response, nil)
 		return gnet.None
 	}
-
-	//s.logger.Debug("ON TRAFFIC REACHED...", "handler", handlerType, "data", data)
 
 	// Retrieve the handler
 	s.mu.RLock()

@@ -3,7 +3,6 @@ package packets
 import (
 	"encoding/binary"
 	"errors"
-	"fmt"
 
 	"github.com/unpackdev/fdb/types"
 )
@@ -84,8 +83,9 @@ func DecodeDBResponse(data []byte) (*DBResponse, error) {
 		// Truncate the data to the specified length
 		responseData = responseData[:dataLength]
 	} else if uint32(len(responseData)) < dataLength {
-		// Only consider it an error if we have less data than expected
-		return nil, errors.New("response data truncated: expected " + fmt.Sprintf("%d", dataLength) + " bytes but got " + fmt.Sprintf("%d", len(responseData)))
+		// Just use what we have when data is truncated - this happens with error messages
+		// which can be truncated but still contain useful information
+		dataLength = uint32(len(responseData))
 	}
 
 	return &DBResponse{

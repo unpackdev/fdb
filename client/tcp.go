@@ -10,6 +10,7 @@ import (
 
 	"github.com/panjf2000/gnet/v2"
 	"github.com/unpackdev/fdb/logger"
+	"github.com/unpackdev/fdb/packets"
 	"github.com/unpackdev/fdb/types"
 	"go.uber.org/zap"
 )
@@ -35,13 +36,20 @@ type TCPTransport struct {
 func NewTCPTransport(address string, logger logger.Logger, opts ...gnet.Option) *TCPTransport {
 	// Default response timeout of 30 seconds
 	defaultTimeout := 30 * time.Second
-	return &TCPTransport{
+
+	// Create the transport
+	transport := &TCPTransport{
 		address:         address,
 		opts:            opts,
 		handlers:        make(map[MessageType]HandlerFunc),
 		logger:          logger,
 		responseHandler: NewResponseHandler(defaultTimeout),
 	}
+
+	// Register default handlers for system messages and error conditions
+	RegisterDefaultHandlers(transport)
+
+	return transport
 }
 
 // Connect establishes the TCP connection
@@ -100,7 +108,19 @@ func (t *TCPTransport) Close() error {
 func (t *TCPTransport) RegisterHandler(messageType MessageType, handler HandlerFunc) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+
+	// Add debug logging
+	t.logger.Debug("Registering handler for message type",
+		zap.Uint64("type", messageType.Uint64()))
+
+	// Store the handler
 	t.handlers[messageType] = handler
+
+	// Verify it was stored correctly
+	_, exists := t.handlers[messageType]
+	t.logger.Debug("Handler registration status",
+		zap.Uint64("type", messageType.Uint64()),
+		zap.Bool("stored_successfully", exists))
 }
 
 // RegisterResponseChannel registers a channel to receive a response for a specific message type
@@ -154,6 +174,23 @@ func (h *tcpEventHandler) OnShutdown(eng gnet.Engine) {
 func (h *tcpEventHandler) OnOpen(c gnet.Conn) ([]byte, gnet.Action) {
 	h.transport.logger.Info("Connected to server", zap.String("remote", c.RemoteAddr().String()))
 	h.transport.conn = c // Store the connection
+
+	// Set the connection context to this handler so message handlers can access it
+	c.SetContext(h)
+
+	// Check current registered handlers at connection time
+	h.transport.mu.Lock()
+	registeredTypes := make([]uint64, 0, len(h.transport.handlers))
+	for k := range h.transport.handlers {
+		registeredTypes = append(registeredTypes, k.Uint64())
+	}
+	h.transport.mu.Unlock()
+
+	// Log the current registration state
+	h.transport.logger.Debug("Handler registration state at connection time",
+		zap.Reflect("registered_handlers", registeredTypes),
+		zap.String("connection_id", c.RemoteAddr().String()))
+
 	return nil, gnet.None
 }
 
@@ -306,13 +343,64 @@ func (h *tcpEventHandler) OnTraffic(c gnet.Conn) gnet.Action {
 
 	// If not handled by response handler, try the traditional handlers
 	if !handled {
+		// Debug handler lookup
+		h.transport.mu.Lock()
+		registeredTypes := make([]uint64, 0, len(h.transport.handlers))
+		for k := range h.transport.handlers {
+			registeredTypes = append(registeredTypes, k.Uint64())
+		}
+		h.transport.mu.Unlock()
+
+		// Check if our target type is in the map
+		hasInvalidActionHandler := false
+		for _, t := range registeredTypes {
+			if t == uint64(InvalidActionMessageType) {
+				hasInvalidActionHandler = true
+				break
+			}
+		}
+
+		// Log the current message type and registered handlers
+		h.transport.logger.Debug("Looking up handler",
+			zap.Uint64("message_type", messageType.Uint64()),
+			zap.Reflect("registered_types", registeredTypes),
+			zap.Bool("has_invalid_action_handler", hasInvalidActionHandler),
+			zap.Bool("message_is_invalid_action", messageType == InvalidActionMessageType))
+
+		// Special handling for InvalidActionMessageType (0x69)
+		// This is a common error response type from the server when handling large payloads
+		if messageType == InvalidActionMessageType {
+			h.transport.logger.Warn("Received InvalidAction message from server",
+				zap.Int("size", len(payload)),
+				zap.String("error", string(payload)))
+
+			// Try to decode the error message
+			dbResponse, err := packets.DecodeDBResponse(payload)
+			if err == nil {
+				errorMessage := string(dbResponse.Data)
+				h.transport.logger.Error("Server reported error",
+					zap.String("message", errorMessage))
+
+				// Convert to a regular error response that waiting handlers can understand
+				successMsgType := MessageType(types.HandlerStatusSuccess.Byte())
+				h.transport.responseHandler.HandleResponse(successMsgType, payload)
+			}
+
+			// Don't fall through to the normal handler lookup
+			return gnet.None
+		}
+
+		// Normal handler lookup and execution
 		handler, exists := h.transport.handlers[messageType]
 		if exists {
+			h.transport.logger.Debug("Found handler for message type",
+				zap.Uint64("type", messageType.Uint64()))
 			if err := handler(c, payload); err != nil {
 				h.transport.logger.Error("Handler error", zap.Error(err))
 			}
 		} else {
-			h.transport.logger.Warn("No handler for message type", zap.Uint64("type", messageType.Uint64()))
+			h.transport.logger.Warn("No handler for message type",
+				zap.Uint64("type", messageType.Uint64()))
 		}
 	}
 

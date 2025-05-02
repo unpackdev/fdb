@@ -9,7 +9,8 @@ func (t MessageType) Uint64() uint64 {
 }
 
 var (
-	InvalidActionMessageType MessageType = 0x69
+	// InvalidActionMessageType is 69 decimal (not 0x69 hex which would be 105 decimal)
+	InvalidActionMessageType MessageType = 69 // 'E' in ASCII
 	WriteSuccessMessageType  MessageType = 0x01
 )
 
