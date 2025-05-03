@@ -69,15 +69,36 @@ func writeStrategyFlags() []cli.Flag {
 	}
 }
 
+// networkStrategyFlags returns the flags specific to the network strategy
+func networkStrategyFlags() []cli.Flag {
+	return []cli.Flag{
+		&cli.IntFlag{
+			Name:    "duration",
+			Aliases: []string{"d"},
+			Value:   60,
+			Usage:   "Duration to run the network test in seconds",
+		},
+		&cli.IntFlag{
+			Name:    "ping-timeout",
+			Aliases: []string{"t"},
+			Value:   5,
+			Usage:   "Timeout for each ping operation in seconds",
+		},
+	}
+}
+
+// PlaygroundCommand returns a cli.Command for running playground environments
 func PlaygroundCommand() *cli.Command {
 	return &cli.Command{
-		Name:  "playground",
-		Usage: "Play with (f)db clients over simulated network",
+		Name:        "playground",
+		Usage:       "Run playground environments for testing and demos",
+		Description: "Playground provides a simple environment for spawning multiple nodes and running test strategies",
 		Subcommands: []*cli.Command{
 			{
-				Name:  "network",
-				Usage: "Run just the network without any specific test strategy",
-				Flags: commonFlags(),
+				Name:        "network",
+				Usage:       "Run a network connectivity test",
+				Description: "Tests the P2P network connectivity between all nodes",
+				Flags:       append(commonFlags(), networkStrategyFlags()...),
 				Action: func(c *cli.Context) error {
 					config := playground.Config{
 						BasePort:  DefaultBasePort,

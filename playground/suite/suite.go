@@ -168,7 +168,7 @@ func (t *TestNode) WaitForPeersConnected(expectedPeerCount int, timeout time.Dur
 	for {
 		select {
 		case <-timeoutCh:
-			return fmt.Errorf("timeout waiting for validator %s to connect to peers", t.PeerID())
+			return fmt.Errorf("timeout waiting for node %s to connect to peers", t.PeerID())
 		case <-ticker.C:
 			peers := t.node.Network().Host().Network().Peers()
 			if len(peers) >= expectedPeerCount {
@@ -267,25 +267,6 @@ func InitializeNodes(
 				BasePath: dir,
 				Keys:     []config.Key{}, // Keys are generated dynamically...
 			},
-			Observability: config.Observability{
-				Metrics: config.MetricsConfig{
-					Enable:         false,
-					Exporter:       "prometheus",
-					Endpoint:       "0.0.0.0:9090",
-					Headers:        map[string]string{},
-					ExportInterval: 15 * time.Second,
-					SampleRate:     1.0,
-				},
-				Tracing: config.TracingConfig{
-					Enable:         false,
-					Exporter:       "otlp",
-					Endpoint:       "localhost:4317",
-					Headers:        map[string]string{},
-					Sampler:        "always_on",
-					SamplingRate:   1.0,
-					ExportInterval: 15 * time.Second,
-				},
-			},
 			Transports: []config.Transport{
 				{
 					Type:    types.TCPTransportType,
@@ -311,6 +292,25 @@ func InitializeNodes(
 					Port:    rpcPort,
 					Type:    types.TCPTransportType,
 					TLS:     nil,
+				},
+			},
+			Observability: config.Observability{
+				Metrics: config.MetricsConfig{
+					Enable:         true,
+					Exporter:       "prometheus",
+					Endpoint:       "localhost:4317",
+					Headers:        map[string]string{},
+					ExportInterval: 15 * time.Second,
+					SampleRate:     1.0,
+				},
+				Tracing: config.TracingConfig{
+					Enable:         true,
+					Exporter:       "otlp",
+					Endpoint:       "localhost:4317",
+					Headers:        map[string]string{},
+					Sampler:        "always_on",
+					SamplingRate:   0.1,
+					ExportInterval: 15 * time.Second,
 				},
 			},
 		}
@@ -435,7 +435,7 @@ func InitializeNodes(
 
 	for _, tNode := range nodes {
 		// Minus one because own peer needs to be excluded
-		wpcErr := tNode.WaitForPeersConnected(len(nodeRoles)-1, 10*time.Second)
+		wpcErr := tNode.WaitForPeersConnected(len(nodeRoles)-1, 30*time.Second)
 		if wpcErr != nil {
 			return nil, fmt.Errorf("failure to establish mutual node connectivity: %w", wpcErr)
 		}

@@ -14,4 +14,7 @@ var AvailableStrategies = map[string]RegistryFn{
 	"write": func(logger logger.Logger) strategies.Strategy {
 		return strategies.NewWriteStrategy(logger, nil) // Nodes will be provided later
 	},
+	"network": func(logger logger.Logger) strategies.Strategy {
+		return strategies.NewNetworkStrategy(logger, nil) // Nodes will be provided later
+	},
 }
