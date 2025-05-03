@@ -36,8 +36,8 @@ func CreateResponseMessage(payload []byte) []byte {
 	return append(lengthBuf, payload...)
 }
 
-// GetFreePort attempts to find an available port and confirm that it's truly available.
-func GetFreePort(t testing.TB) int {
+// GetFreePortForTest attempts to find an available port and confirm that it's truly available.
+func GetFreePortForTest(t testing.TB) int {
 	maxAttempts := 5
 	for i := 0; i < maxAttempts; i++ {
 		addr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:0")

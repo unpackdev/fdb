@@ -21,7 +21,7 @@ func SetupRPCServerForTest(t testing.TB) (rpcInstance *RPC, addr string, cleanup
 	ctx := context.Background()
 
 	// Use a free port.
-	port := tcp.GetFreePort(t)
+	port := tcp.GetFreePortForTest(t)
 
 	// Define node configuration.
 	nodeConfig := config.Config{

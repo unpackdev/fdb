@@ -1,6 +1,4 @@
-// tests/suite.go
-
-package tests
+package suite
 
 import (
 	"context"
@@ -9,12 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"testing"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/pkg/errors"
-	"github.com/stretchr/testify/require"
 	"github.com/unpackdev/fdb"
 	"github.com/unpackdev/fdb/client"
 	"github.com/unpackdev/fdb/pkg/accounts"
@@ -192,8 +188,7 @@ func (t *TestNode) WaitForPeersConnected(expectedPeerCount int, timeout time.Dur
 // InitializeTestNodes initializes 'count' number of nodes for testing.
 // Each node is assigned a unique port starting from 'basePort'.
 // DIDs are created with persistence disabled (non-persistent keys).
-func InitializeTestNodes(
-	t *testing.T,
+func InitializeNodes(
 	ctx context.Context,
 	logLevel zapcore.Level,
 	signerType types.SignerType,
@@ -211,8 +206,15 @@ func InitializeTestNodes(
 		}
 
 		// Use a free port.
-		rpcPort := tcp.GetFreePortForTest(t)
-		tcpPort := tcp.GetFreePortForTest(t)
+		rpcPort, rpErr := tcp.GetFreePort()
+		if rpErr != nil {
+			return nil, fmt.Errorf("failed to acquire a free port for node %d: %w", i, rpErr)
+		}
+
+		tcpPort, tpErr := tcp.GetFreePort()
+		if tpErr != nil {
+			return nil, fmt.Errorf("failed to acquire a free port for node %d: %w", i, tpErr)
+		}
 
 		// Configuration of mdbx databases that are used by the chain and graphmdbx packages.
 		// This system utilises a DAG database approach.
@@ -290,40 +292,6 @@ func InitializeTestNodes(
 				},
 			},
 			Transports: []config.Transport{
-				// {
-				// 	Type:    types.DummyTransportType,
-				// 	Enabled: true,
-				// 	Config: &config.DummyTransport{
-				// 		Type:    types.DummyTransportType,
-				// 		Enabled: true,
-				// 		IPv4:    "127.0.0.1",
-				// 		Port:    4434,
-				// 	},
-				// },
-				// {
-				// 	Type:    types.QUICTransportType,
-				// 	Enabled: true,
-				// 	Config: &config.QuicTransport{
-				// 		Type:    types.QUICTransportType,
-				// 		Enabled: true,
-				// 		IPv4:    "127.0.0.1",
-				// 		Port:    4433,
-				// 		TLS: config.TLS{
-				// 			Insecure: true,
-				// 			Key:      "../data/certs/key.pem",
-				// 			Cert:     "../data/certs/cert.pem",
-				// 		},
-				// 	},
-				// },
-				// {
-				// 	Type:    types.UDSTransportType,
-				// 	Enabled: true,
-				// 	Config: &config.UdsTransport{
-				// 		Type:    types.UDSTransportType,
-				// 		Enabled: true,
-				// 		Socket:  "/tmp/fdb.sock",
-				// 	},
-				// },
 				{
 					Type:    types.TCPTransportType,
 					Enabled: true,
@@ -339,21 +307,6 @@ func InitializeTestNodes(
 						// },
 					},
 				},
-				// {
-				// 	Type:    types.UDPTransportType,
-				// 	Enabled: true,
-				// 	Config: &config.UdpTransport{
-				// 		Type:    types.UDPTransportType,
-				// 		Enabled: true,
-				// 		IPv4:    "127.0.0.1",
-				// 		Port:    5022,
-				// 		DTLS: &config.DTLS{
-				// 			Insecure: true,
-				// 			Key:      "../data/certs/key.pem",
-				// 			Cert:     "../data/certs/cert.pem",
-				// 		},
-				// 	},
-				// },
 			},
 			Rpc: config.Rpc{
 				PoolMaxSize: 5,
@@ -381,7 +334,9 @@ func InitializeTestNodes(
 
 		// Initialize the RBAC manager
 		rbacMgr, rbmErr := rbac.NewManager(ctx, rbac.WithDefaultRoles())
-		require.NoError(t, rbmErr)
+		if rbmErr != nil {
+			return nil, fmt.Errorf("failed to initialize RBAC manager for node %d: %w", i, rbmErr)
+		}
 
 		// Initialize the identity manager
 		identityMgr, err := accounts.NewStore(nodeConfig.Identity, testLogger, rbacMgr)
@@ -411,7 +366,9 @@ func InitializeTestNodes(
 
 		// Create the RPC instance.
 		rpcInstance, err := rpc.NewRPC(ctx, nodeConfig.Rpc, testLogger, obs, stateMgr)
-		require.NoError(t, err, "Failed to initialize RPC")
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize RPC for node %d: %w", i, err)
+		}
 
 		tManager := transports.NewManager()
 
@@ -448,24 +405,35 @@ func InitializeTestNodes(
 	for _, tNode := range nodes {
 		go func() {
 			startErr := tNode.fDb.Start(ctx, transportTypes...)
-			require.NoError(t, startErr)
+			if startErr != nil {
+				tNode.logger.Error("failed to start fdb for node", zap.Error(startErr))
+				return
+			}
 		}()
 
 		// Wait for the node to start
 		stateErr := tNode.state.WaitForState(node.NodeStateType, state.Started, 15*time.Second)
-		require.NoError(t, stateErr)
+		if stateErr != nil {
+			return nil, fmt.Errorf("failed to start node %s: %w", tNode.peerID, stateErr)
+		}
 
 		// // Wait for the RPC to start
 		stateErr = tNode.state.WaitForState(rpc.RpcStateType, state.Started, 5*time.Second)
-		require.NoError(t, stateErr)
+		if stateErr != nil {
+			return nil, fmt.Errorf("failed to start rpc for node %s: %w", tNode.peerID, stateErr)
+		}
 
 		// Initialize client to raw tcp socket, not actual RPC client.
-		client, err := CreateClient(t, ctx, tNode.logger, tNode.config.GetTransportByType(types.TCPTransportType).Config.(*config.TcpTransport).Port)
-		require.NoError(t, err)
+		client, err := CreateClient(ctx, tNode.logger, tNode.config.GetTransportByType(types.TCPTransportType).Config.(*config.TcpTransport).Port)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create client for node %s: %w", tNode.peerID, err)
+		}
 
 		// Connect to the node
 		connectErr := client.Start(ctx)
-		require.NoError(t, connectErr)
+		if connectErr != nil {
+			return nil, fmt.Errorf("failed to connect to node %s: %w", tNode.peerID, connectErr)
+		}
 
 		tNode.client = client
 	}
@@ -473,14 +441,16 @@ func InitializeTestNodes(
 	for _, tNode := range nodes {
 		// Minus one because own peer needs to be excluded
 		wpcErr := tNode.WaitForPeersConnected(len(nodeRoles)-1, 10*time.Second)
-		require.NoError(t, wpcErr, "failure to establish mutual node connectivity")
+		if wpcErr != nil {
+			return nil, fmt.Errorf("failure to establish mutual node connectivity: %w", wpcErr)
+		}
 	}
 
 	return nodes, nil
 }
 
 // ShutdownTestNodes gracefully shuts down all test nodes and cleans up temporary directories.
-func ShutdownTestNodes(t *testing.T, nodes []*TestNode) error {
+func ShutdownTestNodes(nodes []*TestNode) error {
 	var wg sync.WaitGroup
 	errChan := make(chan error, len(nodes))
 
@@ -499,7 +469,10 @@ func ShutdownTestNodes(t *testing.T, nodes []*TestNode) error {
 			}
 
 			rpcStateErr := n.State().WaitForState(rpc.RpcStateType, state.Stopped, 15*time.Second)
-			require.NoError(t, rpcStateErr)
+			if rpcStateErr != nil {
+				errChan <- fmt.Errorf("failed to stop rpc for node %s: %w", n.peerID, rpcStateErr)
+				return
+			}
 
 			if err := n.node.Shutdown(); err != nil {
 				errChan <- fmt.Errorf("failed to shutdown node %s: %w", n.peerID, err)
@@ -507,7 +480,10 @@ func ShutdownTestNodes(t *testing.T, nodes []*TestNode) error {
 			}
 
 			nodeStateErr := n.State().WaitForState(node.NodeStateType, state.Stopped, 15*time.Second)
-			require.NoError(t, nodeStateErr)
+			if nodeStateErr != nil {
+				errChan <- fmt.Errorf("failed to stop node %s: %w", n.peerID, nodeStateErr)
+				return
+			}
 
 			// Remove temporary directory
 			if err := os.RemoveAll(n.dir); err != nil {

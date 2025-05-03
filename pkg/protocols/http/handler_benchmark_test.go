@@ -25,7 +25,7 @@ import (
 // setupBenchmarkServer initializes the HTTP server for benchmarking.
 func setupBenchmarkServer(t testing.TB, ctx context.Context, cfg config.TcpTransport) (*tcp.Server, logger.Logger, *observability.Observability, string, error) {
 	// Get a free port
-	port := tcp.GetFreePort(t)
+	port := tcp.GetFreePortForTest(t)
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 
 	// Setup server using existing test helper
@@ -163,8 +163,8 @@ func BenchmarkHTTPHandler_POST_Echo(b *testing.B) {
 		Type:    types.TCPTransportType,
 		Enabled: true,
 		IPv4:    net.ParseIP("127.0.0.1").String(),
-		Port:    tcp.GetFreePort(&testing.T{}), // Dynamically assign port
-		TLS:     nil,                           // Disable TLS for simplicity
+		Port:    tcp.GetFreePortForTest(b),
+		TLS:     nil,
 	}
 
 	server, _, _, addr, err := setupBenchmarkServer(b, ctx, cfg)
@@ -243,8 +243,8 @@ func BenchmarkHTTPHandler_Concurrent(b *testing.B) {
 		Type:    types.TCPTransportType,
 		Enabled: true,
 		IPv4:    net.ParseIP("127.0.0.1").String(),
-		Port:    tcp.GetFreePort(&testing.T{}), // Dynamically assign port
-		TLS:     nil,                           // Disable TLS for simplicity
+		Port:    tcp.GetFreePortForTest(b),
+		TLS:     nil,
 	}
 
 	server, _, _, addr, err := setupBenchmarkServer(b, ctx, cfg)

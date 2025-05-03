@@ -102,11 +102,6 @@ func New(ctx context.Context, cfg config.Config) (*FDB, error) {
 
 	batchWriter := db.NewBatchWriter(dbI.(*db.Db), 2048, 100*time.Millisecond, 15)
 
-	// Node is basically a wrapper around consensus, chain, identity management, peer system and peer discovery system.
-	// Not to forget metrics and ping-pong game between peers to establish metrics baseline.
-	// Construction is done here because other services might need it.
-	// In this state, block producer callback is not set.
-	// Sequencer will be setting up block producer callback and utilize it.
 	dNode, dnErr := node.NewNode(ctx, cfg, rbacMgr, zLog, store, obs, stateMgr, dbM, batchWriter)
 	if dnErr != nil {
 		return nil, errors.Wrap(dnErr, "failed to initialize node")

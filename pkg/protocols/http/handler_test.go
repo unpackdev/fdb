@@ -25,7 +25,7 @@ import (
 
 func setupHTTPServerTest(t testing.TB, ctx context.Context) (*tcp.Server, logger.Logger, *observability.Observability, string) {
 	// Get a free port
-	port := tcp.GetFreePort(t)
+	port := tcp.GetFreePortForTest(t)
 	addr := fmt.Sprintf("127.0.0.1:%d", port)
 
 	// Create TCP transport configuration without TLS for testing
