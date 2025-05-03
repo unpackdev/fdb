@@ -107,15 +107,20 @@ func (r *Registry) CreateStrategy(name string, logger logger.Logger, nodes suite
 	return entry.Strategy.CreateFn()(logger, nodes, mergedArgs)
 }
 
-// RegisterWriteStrategy registers the built-in write strategy
-func (r *Registry) RegisterWriteStrategy() {
-	// Create a prototype instance of the WriteStrategy
-	writeStrategy := strategies.NewWriteStrategy(r.logger, nil) // Nodes will be provided later
+// RegisterAll registers all available strategies from the strategies package
+func (r *Registry) RegisterAll() {
+	// Register all strategies from the centralized map
+	for name, factory := range strategies.AvailableStrategies {
+		// Create a prototype instance using the factory
+		strategy := factory(r.logger)
 
-	// Register the strategy
-	err := r.Register(writeStrategy)
-	if err != nil {
-		r.logger.Error("Failed to register write strategy", "error", err.Error())
+		// Register the strategy
+		err := r.Register(strategy)
+		if err != nil {
+			r.logger.Error(fmt.Sprintf("Failed to register %s strategy", name), "error", err.Error())
+		} else {
+			r.logger.Debug(fmt.Sprintf("Registered strategy: %s", name))
+		}
 	}
 }
 
@@ -126,17 +131,24 @@ func (r *Registry) RunStrategy(ctx context.Context, name string, logger logger.L
 		return fmt.Errorf("failed to create strategy: %w", err)
 	}
 
-	// Create a cancellable context
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	// Start the strategy
+	// Start the strategy with the provided context
 	if err := strategy.Start(ctx); err != nil {
 		return fmt.Errorf("failed to start strategy: %w", err)
 	}
 
-	// Wait for context cancellation
-	<-ctx.Done()
+	// Get the strategy's completion channel
+	completionCh := strategy.CompletionCh()
+
+	// Monitor for either context cancellation or strategy completion
+	select {
+	case <-ctx.Done():
+		// External cancellation (shutdown manager)
+		logger.Info("Strategy stopping due to context cancellation")
+		
+	case <-completionCh:
+		// Strategy has completed naturally
+		logger.Info("Strategy completed its work successfully")
+	}
 
 	// Stop the strategy
 	if err := strategy.Stop(); err != nil {

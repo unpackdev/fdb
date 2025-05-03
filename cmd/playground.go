@@ -79,14 +79,12 @@ func PlaygroundCommand() *cli.Command {
 				Usage: "Run just the network without any specific test strategy",
 				Flags: commonFlags(),
 				Action: func(c *cli.Context) error {
-					// Create a config with defaults that can be overridden by CLI flags
 					config := playground.Config{
 						BasePort:  DefaultBasePort,
 						NodeCount: DefaultNodeCount,
 						LogLevel:  zap.NewAtomicLevelAt(zap.DebugLevel),
 					}
 
-					// Parse log level if provided
 					if c.IsSet("log-level") {
 						logLevelStr := c.String("log-level")
 						level, err := zap.ParseAtomicLevel(logLevelStr)
@@ -103,18 +101,16 @@ func PlaygroundCommand() *cli.Command {
 			},
 			{
 				Name:        "write",
-				Usage:       "Run a write performance test using the optimized BatchWriter",
-				Description: "Tests the BatchWriter with 2048 batch size and 100ms flush interval",
+				Usage:       "Run a write performance test",
+				Description: "Tests the P2P network database write and data transfer performance",
 				Flags:       append(commonFlags(), writeStrategyFlags()...),
 				Action: func(c *cli.Context) error {
-					// Create a config with defaults that can be overridden by CLI flags
 					config := playground.Config{
 						BasePort:  DefaultBasePort,
 						NodeCount: DefaultNodeCount,
 						LogLevel:  zap.NewAtomicLevelAt(zap.DebugLevel),
 					}
 
-					// Parse log level if provided
 					if c.IsSet("log-level") {
 						logLevelStr := c.String("log-level")
 						level, err := zap.ParseAtomicLevel(logLevelStr)
@@ -126,8 +122,6 @@ func PlaygroundCommand() *cli.Command {
 					}
 
 					// Pass the strategy name via a flag
-					// We can't modify the context directly, so we'll use the command line flag
-					// that the entrypoint.go expects
 					c.Set("strategy", "write")
 
 					// Run the playground with the write strategy

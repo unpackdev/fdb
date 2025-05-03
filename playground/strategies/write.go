@@ -26,6 +26,7 @@ type WriteStrategy struct {
 	mu           sync.Mutex
 	completedOps int
 	startTime    time.Time
+	doneCh       chan struct{}
 }
 
 // NewWriteStrategy creates a new WriteStrategy with the given parameters
@@ -39,9 +40,10 @@ func NewWriteStrategy(
 		nodes:        nodes,
 		workersCount: 10, // Default number of concurrent workers
 		keyPrefix:    "test-key-",
-		dataSizeKB:   10,   // Default to 10KB per write
-		opsPerSec:    100,  // Default operations per second
-		totalOps:     1000, // Default total operations
+		dataSizeKB:   10,                  // Default to 10KB per write
+		opsPerSec:    100,                 // Default operations per second
+		totalOps:     1000,                // Default total operations
+		doneCh:       make(chan struct{}), // Initialize completion channel
 	}
 
 	// Set default target node if nodes is not empty
@@ -114,7 +116,6 @@ func (s *WriteStrategy) Start(ctx context.Context) error {
 		"total_ops", s.totalOps,
 		"target_node", s.targetNode.PeerID().String())
 
-	// Create a new context we can cancel when Stop is called
 	ctx, s.cancel = context.WithCancel(ctx)
 	s.startTime = time.Now()
 	s.completedOps = 0
@@ -126,7 +127,6 @@ func (s *WriteStrategy) Start(ctx context.Context) error {
 		opsPerWorker = 1
 	}
 
-	// Start workers
 	for i := 0; i < s.workersCount; i++ {
 		s.wg.Add(1)
 		workerID := i
@@ -135,6 +135,22 @@ func (s *WriteStrategy) Start(ctx context.Context) error {
 
 	// Start a goroutine to report progress
 	go s.reportProgress(ctx)
+
+	// Start a completion monitor
+	go func() {
+		s.wg.Wait()
+		s.logger.Info("All workers completed, strategy work is done")
+
+		// Wait a moment for final logging, then signal completion and cancel the context
+		time.Sleep(1 * time.Second)
+
+		// Close the done channel to signal strategy completion
+		close(s.doneCh)
+
+		if s.cancel != nil {
+			s.cancel()
+		}
+	}()
 
 	return nil
 }
@@ -193,10 +209,8 @@ func (s *WriteStrategy) runWorker(ctx context.Context, id, ops int, delay time.D
 
 // performWriteOperation executes a single write operation
 func (s *WriteStrategy) performWriteOperation(ctx context.Context, workerID, opID int) error {
-	// Generate key and test data
 	key := fmt.Sprintf("%s%d-%d", s.keyPrefix, workerID, opID)
 
-	// Generate test data of specified size
 	data, err := suite.GenerateTestDataKB(s.dataSizeKB, false)
 	if err != nil {
 		return fmt.Errorf("failed to generate test data: %w", err)
@@ -206,12 +220,10 @@ func (s *WriteStrategy) performWriteOperation(ctx context.Context, workerID, opI
 	// This is a placeholder for the actual implementation that would use the
 	// optimized BatchWriter component with its 2048 batch size and 100ms flush interval
 
-	// For now, we'll just log the operation
 	s.logger.Debug("Write operation",
 		"key", key,
 		"data_size", len(data))
 
-	// Simulate successful write
 	return nil
 }
 
@@ -255,51 +267,79 @@ func (s *WriteStrategy) Info() Info {
 			"ops_per_sec":  100,  // Default operations per second
 			"total_ops":    1000, // Default total operations
 		},
+		ArgMappings: []ArgMapping{
+			{
+				CliFlag:      "target-node",
+				ParamKey:     "target_node",
+				Description:  "Index of the node to send writes to (default 0 = first node)",
+				DefaultValue: 0,
+				Required:     false,
+			},
+			{
+				CliFlag:      "workers",
+				ParamKey:     "workers",
+				Description:  "Number of concurrent workers for write operations (optimized with XOR key distribution)",
+				DefaultValue: 10,
+				Required:     false,
+			},
+			{
+				CliFlag:      "data-size",
+				ParamKey:     "data_size_kb",
+				Description:  "Size of data to write in KB (uses optimized TCP streaming with 128KB buffer)",
+				DefaultValue: 10,
+				Required:     false,
+			},
+			{
+				CliFlag:      "ops-per-sec",
+				ParamKey:     "ops_per_sec",
+				Description:  "Target operations per second across all workers",
+				DefaultValue: 100,
+				Required:     false,
+			},
+			{
+				CliFlag:      "total-ops",
+				ParamKey:     "total_ops",
+				Description:  "Total number of operations to perform",
+				DefaultValue: 1000,
+				Required:     false,
+			},
+		},
 	}
+}
+
+// CompletionCh returns a channel that will be closed when the strategy has completed its work
+func (s *WriteStrategy) CompletionCh() <-chan struct{} {
+	return s.doneCh
 }
 
 // CreateFn returns a function that can create new instances of this strategy
 func (s *WriteStrategy) CreateFn() StrategyFn {
 	return func(logger logger.Logger, nodes suite.TestNodes, args map[string]any) (Strategy, error) {
-		// Parse options from args
-		options := []WriteStrategyOption{}
-
-		// Target node
-		if val, ok := args["target_node"]; ok {
-			if idx, ok := val.(int); ok {
-				options = append(options, WithTargetNode(idx))
-			}
+		targetNodeIdx, ok := args["target_node"].(int)
+		if !ok || targetNodeIdx < 0 || targetNodeIdx >= len(nodes) {
+			return nil, fmt.Errorf("invalid target node: %v", args["target_node"])
 		}
 
-		// Workers
-		if val, ok := args["workers"]; ok {
-			if count, ok := val.(int); ok {
-				options = append(options, WithWorkersCount(count))
-			}
+		options := []WriteStrategyOption{
+			WithTargetNode(targetNodeIdx),
 		}
 
-		// Data size
-		if val, ok := args["data_size_kb"]; ok {
-			if size, ok := val.(int); ok {
-				options = append(options, WithDataSize(size))
-			}
+		if v, ok := args["workers"].(int); ok && v > 0 {
+			options = append(options, WithWorkersCount(v))
 		}
 
-		// Operations per second
-		if val, ok := args["ops_per_sec"]; ok {
-			if ops, ok := val.(int); ok {
-				options = append(options, WithOperationsPerSecond(ops))
-			}
+		if v, ok := args["data_size_kb"].(int); ok && v > 0 {
+			options = append(options, WithDataSize(v))
 		}
 
-		// Total operations
-		if val, ok := args["total_ops"]; ok {
-			if ops, ok := val.(int); ok {
-				options = append(options, WithTotalOperations(ops))
-			}
+		if v, ok := args["ops_per_sec"].(int); ok && v > 0 {
+			options = append(options, WithOperationsPerSecond(v))
 		}
 
-		// Create and return the write strategy
+		if v, ok := args["total_ops"].(int); ok && v > 0 {
+			options = append(options, WithTotalOperations(v))
+		}
+
 		return NewWriteStrategy(logger, nodes, options...), nil
 	}
 }

@@ -5,7 +5,26 @@ import (
 
 	"github.com/unpackdev/fdb/pkg/logger"
 	"github.com/unpackdev/fdb/playground/suite"
+	"github.com/urfave/cli/v2"
 )
+
+// ArgMapping defines how CLI flags map to strategy parameters
+type ArgMapping struct {
+	// CliFlag is the name of the flag in the CLI (e.g. "data-size")
+	CliFlag string
+
+	// ParamKey is the key in the args map passed to the strategy (e.g. "data_size_kb")
+	ParamKey string
+
+	// Description is a user-friendly description of the parameter
+	Description string
+
+	// DefaultValue is the default value for this parameter
+	DefaultValue any
+
+	// Required indicates if this parameter must be provided
+	Required bool
+}
 
 // Info contains metadata about a strategy
 type Info struct {
@@ -17,6 +36,9 @@ type Info struct {
 
 	// DefaultArgs contains the default parameter values
 	DefaultArgs map[string]any
+
+	// ArgMappings defines how CLI flags map to strategy parameters
+	ArgMappings []ArgMapping
 }
 
 // StrategyFn is a function that creates a strategy instance
@@ -37,4 +59,51 @@ type Strategy interface {
 
 	// CreateFn returns a function that can create new instances of this strategy
 	CreateFn() StrategyFn
+
+	// CompletionCh returns a channel that will be closed when the strategy's work is done
+	// This allows external callers to detect when a strategy has naturally completed
+	CompletionCh() <-chan struct{}
+}
+
+// ParseCliArgs converts CLI context args to strategy args based on the mappings
+func ParseCliArgs(cliCtx *cli.Context, info Info) map[string]any {
+	args := make(map[string]any)
+
+	// Add default values from DefaultArgs
+	for k, v := range info.DefaultArgs {
+		args[k] = v
+	}
+
+	// Parse args from CLI flags based on the mappings
+	for _, mapping := range info.ArgMappings {
+		if cliCtx.IsSet(mapping.CliFlag) {
+			// Get the value based on type inference
+			switch mapping.DefaultValue.(type) {
+			case int:
+				args[mapping.ParamKey] = cliCtx.Int(mapping.CliFlag)
+			case string:
+				args[mapping.ParamKey] = cliCtx.String(mapping.CliFlag)
+			case bool:
+				args[mapping.ParamKey] = cliCtx.Bool(mapping.CliFlag)
+			case float64:
+				args[mapping.ParamKey] = cliCtx.Float64(mapping.CliFlag)
+			default:
+				// For other types, just use the string value
+				args[mapping.ParamKey] = cliCtx.String(mapping.CliFlag)
+			}
+		}
+	}
+
+	return args
+}
+
+// StrategyFactory is a function that creates a strategy prototype
+type StrategyFactory func(logger logger.Logger) Strategy
+
+// AvailableStrategies is a map of all available strategies and their factory functions
+// Add new strategies to this map to make them available in the playground
+var AvailableStrategies = map[string]StrategyFactory{
+	"write": func(logger logger.Logger) Strategy {
+		return NewWriteStrategy(logger, nil) // Nodes will be provided later
+	},
 }
