@@ -294,9 +294,6 @@ By default, this will start the server with all the transports and services conf
 
 https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes
 
-
-
-
 ```
 sysctl -w net.core.rmem_max=7500000
 sysctl -w net.core.wmem_max=7500000
@@ -319,109 +316,6 @@ sysctl -w net.core.wmem_max=7500000
 make build && ./build/fdb certs --cert=./data/certs/cert.pem --key=./data/certs/key.pem
 ```
 
-### Benchmark
-
-```
-make build && ./build/fdb benchmark --suite quic --clients 5 --messages 1000 --type write
-```
-
-## Benchmarks
-
-There is a dummy transport, starts the (gnet) UDP and does pretty much nothing. We're going to 
-use that one as a baseline for any other benchmark.
-
-### DUMMY
-
-#### Write Benchmark
-
-```
-make build && ./build/fdb benchmark --suite dummy --clients 50 --messages 1000000 --type write --timeout 120
-
---- Benchmark Report ---
-Total Clients: 50
-Messages per Client: 1000000
-Total Messages: 50000000
-Success Messages: 50000000
-Failed Messages: 0
-Total Duration: 13.604984597s
-Average Latency: 10.925µs
-P50 Latency: 5.87µs
-P90 Latency: 7.4µs
-P99 Latency: 14.56µs
-Throughput: 3,675,123 messages/second
-Memory Used: 6.05 MB
-Latency Jitter (StdDev): 346.418350µs
-
-```
-
-### TCP
-
-#### Write Benchmark
-
-```
-make build && ./build/fdb benchmark --suite tcp --clients 50 --messages 200000 --type write --timeout 120
-
---- Benchmark Report ---
-Total Clients: 50
-Messages per Client: 200000
-Total Messages: 10000000
-Success Messages: 10000000
-Failed Messages: 0
-Total Duration: 17.935868899s
-Average Latency: 83.1µs
-P50 Latency: 64.572µs
-P90 Latency: 122.153µs
-P99 Latency: 304.218µs
-Throughput: 557,541 messages/second
-Memory Used: 667.91 MB
-Latency Jitter (StdDev): 148.417551µs
-```
-
-### QUIC
-
-#### Write Benchmark
-
-```
-make build && ./build/fdb benchmark --suite quic --clients 50 --messages 100000 --type write --timeout 120
-
---- Benchmark Report ---
-Total Clients: 50
-Messages per Client: 100000
-Total Messages: 5000000
-Success Messages: 5000000
-Failed Messages: 0
-Total Duration: 54.655111416s
-Average Latency: 543.478µs
-P50 Latency: 521.064µs
-P90 Latency: 945.644µs
-P99 Latency: 1.603621ms
-Throughput: 91,482 messages/second
-Memory Used: 17260.96 MB
-Latency Jitter (StdDev): 319.379812µs
-```
-
-### UDP
-
-#### Write Benchmark
-
-```
-make build && ./build/fdb benchmark --suite udp --clients 50 --messages 100000 --type write --timeout 120
-
---- Benchmark Report ---
-Total Clients: 50
-Messages per Client: 100000
-Total Messages: 5000000
-Success Messages: 5000000
-Failed Messages: 0
-Total Duration: 16.771189289s
-Average Latency: 169.167µs
-P50 Latency: 128.563µs
-P90 Latency: 307.689µs
-P99 Latency: 877.784µs
-Throughput: 298,130 messages/second
-Memory Used: 678.49 MB
-Latency Jitter (StdDev): 173.144187µs
-```
 
 ## LICENSE
 
