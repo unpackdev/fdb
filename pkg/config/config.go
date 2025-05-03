@@ -14,6 +14,9 @@ var global *Config
 // transports, MDBX nodes, and pprof profiling options. This struct aggregates
 // all major configuration sections for easy management and access throughout the application.
 type Config struct {
+	// Id is the unique identifier for the node.
+	Id string `yaml:"id"`
+
 	// Logger holds the configuration for the logging system, including log level and environment.
 	Logger Logger `yaml:"logger"`
 

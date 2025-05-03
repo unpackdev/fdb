@@ -36,7 +36,7 @@ func New(ctx context.Context, cfg config.Config, logger logger.Logger) (*Observa
 	// Initialize Metrics
 	if cfg.Observability.Metrics.Enable {
 
-		obs.Meter, err = InitMetrics(ctx, cfg.Observability.Metrics, logger)
+		obs.Meter, err = InitMetrics(ctx, cfg.Id, cfg.Observability.Metrics, logger)
 		if err != nil {
 			obs.Logger.Error("Failed to initialize metrics", zap.Error(err))
 			return nil, err
@@ -54,7 +54,7 @@ func New(ctx context.Context, cfg config.Config, logger logger.Logger) (*Observa
 
 	// Initialize Tracing
 	if cfg.Observability.Tracing.Enable {
-		obs.Tracer, obs.TracerProvider, err = InitTracer(ctx, cfg.Observability.Tracing, logger)
+		obs.Tracer, obs.TracerProvider, err = InitTracer(ctx, cfg.Id, cfg.Observability.Tracing, logger)
 		if err != nil {
 			obs.Logger.Error("Failed to initialize tracer", zap.Error(err))
 			return nil, err

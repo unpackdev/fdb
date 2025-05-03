@@ -243,6 +243,7 @@ func InitializeNodes(
 
 		// Build the node configuration
 		nodeConfig := config.Config{
+			Id: fmt.Sprintf("playground_node_%d", i),
 			// Logger: config.Logger{
 			// 	Enabled:     true,
 			// 	Environment: "development",

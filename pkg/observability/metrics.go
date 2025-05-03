@@ -6,6 +6,7 @@ import (
 	"github.com/unpackdev/fdb/pkg/config"
 	"github.com/unpackdev/fdb/pkg/logger"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -18,7 +19,7 @@ import (
 var ServiceStateCounter metric.Int64Counter
 
 // InitMetrics initializes OpenTelemetry metrics.
-func InitMetrics(ctx context.Context, cfg config.MetricsConfig, logger logger.Logger) (metric.Meter, error) {
+func InitMetrics(ctx context.Context, nodeId string, cfg config.MetricsConfig, logger logger.Logger) (metric.Meter, error) {
 	if !cfg.Enable {
 		return otel.Meter("disabled"), nil
 	}
@@ -37,6 +38,7 @@ func InitMetrics(ctx context.Context, cfg config.MetricsConfig, logger logger.Lo
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
 			semconv.ServiceNameKey.String(ServiceName),
+			attribute.String("node_id", nodeId),
 		),
 	)
 	if err != nil {

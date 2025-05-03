@@ -7,6 +7,7 @@ import (
 	"github.com/unpackdev/fdb/pkg/logger"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -16,7 +17,7 @@ import (
 )
 
 // InitTracer initializes OpenTelemetry tracing.
-func InitTracer(ctx context.Context, cfg config.TracingConfig, logger logger.Logger) (trace.Tracer, *sdktrace.TracerProvider, error) {
+func InitTracer(ctx context.Context, nodeId string, cfg config.TracingConfig, logger logger.Logger) (trace.Tracer, *sdktrace.TracerProvider, error) {
 	if !cfg.Enable {
 		return otel.Tracer("disabled"), nil, nil
 	}
@@ -36,6 +37,7 @@ func InitTracer(ctx context.Context, cfg config.TracingConfig, logger logger.Log
 	res, err := resource.New(ctx,
 		resource.WithAttributes(
 			semconv.ServiceNameKey.String(ServiceName),
+			attribute.String("node_id", nodeId),
 		),
 	)
 	if err != nil {
