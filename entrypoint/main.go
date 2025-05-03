@@ -1,10 +1,11 @@
 package main
 
 import (
-	"github.com/unpackdev/fdb/cmd"
-	"github.com/urfave/cli/v2"
 	"log"
 	"os"
+
+	"github.com/unpackdev/fdb/cmd"
+	"github.com/urfave/cli/v2"
 )
 
 func main() {
@@ -12,11 +13,12 @@ func main() {
 		Name:  "(f)db",
 		Usage: "Fast Database Transports",
 		Commands: []*cli.Command{
-			cmd.CertsCommand(),     // Command for handling certificates
-			cmd.BenchmarkCommand(), // Command for running benchmarks
-			cmd.EbpfCommands(),     // Command for running eBPF specific workload
-			cmd.ServeCommand(),     // Command to start the server
-			cmd.KeystoreCommand(),  // Command for handling keystore (Peer IDs)
+			cmd.CertsCommand(),      // Command for handling certificates
+			cmd.BenchmarkCommand(),  // Command for running benchmarks
+			cmd.EbpfCommands(),      // Command for running eBPF specific workload
+			cmd.ServeCommand(),      // Command to start the server
+			cmd.KeystoreCommand(),   // Command for handling keystore (Peer IDs)
+			cmd.PlaygroundCommand(), // Command for playing with real clients over simulated network
 		},
 	}
 
