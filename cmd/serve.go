@@ -3,8 +3,8 @@ package cmd
 import (
 	"github.com/pkg/errors"
 	"github.com/unpackdev/fdb"
-	"github.com/unpackdev/fdb/config"
-	"github.com/unpackdev/fdb/types"
+	"github.com/unpackdev/fdb/pkg/config"
+	"github.com/unpackdev/fdb/pkg/types"
 	"github.com/urfave/cli/v2"
 )
 
@@ -31,7 +31,7 @@ func ServeCommand() *cli.Command {
 			if err != nil {
 				return errors.Wrap(err, "failed to load configuration")
 			}
-			
+
 			// Initialize FDB
 			fdbc, err := fdb.New(c.Context, *cfg)
 			if err != nil {

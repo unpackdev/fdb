@@ -12,10 +12,10 @@ import (
 
 	"github.com/panjf2000/gnet/v2"
 	"github.com/unpackdev/fdb/client"
-	"github.com/unpackdev/fdb/config"
-	"github.com/unpackdev/fdb/logger"
-	"github.com/unpackdev/fdb/messages"
-	"github.com/unpackdev/fdb/types"
+	"github.com/unpackdev/fdb/pkg/config"
+	"github.com/unpackdev/fdb/pkg/logger"
+	"github.com/unpackdev/fdb/pkg/messages"
+	"github.com/unpackdev/fdb/pkg/types"
 )
 
 const (
@@ -100,7 +100,7 @@ func main() {
 	}
 
 	// Register a success response handler for message type 1
-	tcpTransport.RegisterHandler(client.MessageType(types.HandlerStatusSuccess.Byte()), 
+	tcpTransport.RegisterHandler(client.MessageType(types.HandlerStatusSuccess.Byte()),
 		func(c gnet.Conn, data []byte) error {
 			// This handler is just used to avoid warnings - actual response processing
 			// is done through the response channels

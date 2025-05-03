@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/unpackdev/fdb/rbac"
-	"github.com/unpackdev/fdb/types"
+	"github.com/unpackdev/fdb/pkg/rbac"
+	"github.com/unpackdev/fdb/pkg/types"
 	"go.uber.org/zap"
 
 	"github.com/stretchr/testify/require"

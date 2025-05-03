@@ -4,8 +4,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/unpackdev/fdb/packets"
-	"github.com/unpackdev/fdb/types"
+	"github.com/unpackdev/fdb/pkg/packets"
+	"github.com/unpackdev/fdb/pkg/types"
 )
 
 // ResponseCallback defines a function that processes a response message

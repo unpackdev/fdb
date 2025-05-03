@@ -3,17 +3,18 @@ package benchmark
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
-	"github.com/unpackdev/fdb"
-	"github.com/unpackdev/fdb/db"
-	transport_uds "github.com/unpackdev/fdb/transports/uds"
-	"github.com/unpackdev/fdb/types"
-	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/pkg/errors"
+	"github.com/unpackdev/fdb"
+	"github.com/unpackdev/fdb/pkg/db"
+	transport_uds "github.com/unpackdev/fdb/pkg/transports/uds"
+	"github.com/unpackdev/fdb/pkg/types"
+	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 // UdsSuite represents the benchmarking suite for UDS with buffer reuse and latency sampling.

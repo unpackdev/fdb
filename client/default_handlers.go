@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/panjf2000/gnet/v2"
-	"github.com/unpackdev/fdb/packets"
-	"github.com/unpackdev/fdb/types"
+	"github.com/unpackdev/fdb/pkg/packets"
+	"github.com/unpackdev/fdb/pkg/types"
 	"go.uber.org/zap"
 )
 
@@ -111,13 +111,13 @@ func handleErrorResponse(conn gnet.Conn, data []byte) error {
 	if errorMessage == "" {
 		errorMessage = "Server reported error (no details available)"
 	}
-	
+
 	// Clean up the message if multiple errors are concatenated
 	// Look for first null byte or length marker which indicates concatenated messages
 	if idx := strings.IndexByte(errorMessage, 0); idx > 0 {
 		errorMessage = errorMessage[:idx]
 	}
-	
+
 	// Extract the first complete error message if possible
 	if strings.HasPrefix(errorMessage, "ERROR:") || strings.HasPrefix(errorMessage, "RROR:") {
 		// Already have a clean error message

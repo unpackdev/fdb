@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
-	"github.com/unpackdev/fdb/messages"
-	"github.com/unpackdev/fdb/packets"
-	"github.com/unpackdev/fdb/rbac"
-	"github.com/unpackdev/fdb/types"
+	"github.com/unpackdev/fdb/pkg/messages"
+	"github.com/unpackdev/fdb/pkg/packets"
+	"github.com/unpackdev/fdb/pkg/rbac"
+	"github.com/unpackdev/fdb/pkg/types"
 	"go.uber.org/zap"
 )
 

@@ -3,18 +3,19 @@ package benchmark
 import (
 	"context"
 	"fmt"
-	"github.com/unpackdev/fdb/logger"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/unpackdev/fdb/pkg/logger"
+
 	"capnproto.org/go/capnp/v3"
 	"github.com/pkg/errors"
 	"github.com/unpackdev/fdb"
-	"github.com/unpackdev/fdb/db"
-	"github.com/unpackdev/fdb/protocols/capn"
-	"github.com/unpackdev/fdb/protocols/capn/schema"
+	"github.com/unpackdev/fdb/pkg/db"
+	"github.com/unpackdev/fdb/pkg/protocols/capn"
+	"github.com/unpackdev/fdb/pkg/protocols/capn/schema"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 )

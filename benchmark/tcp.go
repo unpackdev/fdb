@@ -3,19 +3,20 @@ package benchmark
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
-	"github.com/unpackdev/fdb"
-	"github.com/unpackdev/fdb/db"
-	"github.com/unpackdev/fdb/messages"
-	"github.com/unpackdev/fdb/transports"
-	transport_tcp "github.com/unpackdev/fdb/transports/tcp"
-	"github.com/unpackdev/fdb/types"
-	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/pkg/errors"
+	"github.com/unpackdev/fdb"
+	"github.com/unpackdev/fdb/pkg/db"
+	"github.com/unpackdev/fdb/pkg/messages"
+	"github.com/unpackdev/fdb/pkg/transports"
+	transport_tcp "github.com/unpackdev/fdb/pkg/transports/tcp"
+	"github.com/unpackdev/fdb/pkg/types"
+	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 // TcpSuite represents the benchmarking suite for TCP with buffer reuse and latency sampling.

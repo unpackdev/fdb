@@ -3,16 +3,17 @@ package benchmark
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
-	"github.com/unpackdev/fdb"
-	transport_dummy "github.com/unpackdev/fdb/transports/dummy"
-	"github.com/unpackdev/fdb/types"
-	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/pkg/errors"
+	"github.com/unpackdev/fdb"
+	transport_dummy "github.com/unpackdev/fdb/pkg/transports/dummy"
+	"github.com/unpackdev/fdb/pkg/types"
+	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 // DummySuite represents the benchmarking suite with buffer reuse and lighter LatencyHistogram.

@@ -4,12 +4,12 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
-	"github.com/unpackdev/fdb/config"
-	"github.com/unpackdev/fdb/db"
-	"github.com/unpackdev/fdb/node"
-	"github.com/unpackdev/fdb/transports"
-	transport_tcp "github.com/unpackdev/fdb/transports/tcp"
-	"github.com/unpackdev/fdb/types"
+	"github.com/unpackdev/fdb/pkg/config"
+	"github.com/unpackdev/fdb/pkg/db"
+	"github.com/unpackdev/fdb/pkg/node"
+	"github.com/unpackdev/fdb/pkg/transports"
+	transport_tcp "github.com/unpackdev/fdb/pkg/transports/tcp"
+	"github.com/unpackdev/fdb/pkg/types"
 )
 
 // tRegistry is a transport registry mapping transport types (e.g., QUIC, TCP, UDP, UDS) to their initialization functions.

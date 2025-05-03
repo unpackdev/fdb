@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/panjf2000/gnet/v2"
-	"github.com/unpackdev/fdb/logger"
-	"github.com/unpackdev/fdb/packets"
-	"github.com/unpackdev/fdb/types"
+	"github.com/unpackdev/fdb/pkg/logger"
+	"github.com/unpackdev/fdb/pkg/packets"
+	"github.com/unpackdev/fdb/pkg/types"
 	"go.uber.org/zap"
 )
 

@@ -10,9 +10,9 @@ import (
 
 	"github.com/panjf2000/gnet/v2"
 	"github.com/unpackdev/fdb/client"
-	"github.com/unpackdev/fdb/logger"
-	"github.com/unpackdev/fdb/messages"
-	"github.com/unpackdev/fdb/types"
+	"github.com/unpackdev/fdb/pkg/logger"
+	"github.com/unpackdev/fdb/pkg/messages"
+	"github.com/unpackdev/fdb/pkg/types"
 	"go.uber.org/zap"
 )
 

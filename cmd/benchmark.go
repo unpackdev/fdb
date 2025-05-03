@@ -3,12 +3,13 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/pkg/errors"
 	"github.com/unpackdev/fdb"
 	"github.com/unpackdev/fdb/benchmark"
-	"github.com/unpackdev/fdb/config"
+	"github.com/unpackdev/fdb/pkg/config"
 	"github.com/urfave/cli/v2"
-	"time"
 )
 
 // BenchmarkCommand returns a cli.Command that benchmarks the real client.

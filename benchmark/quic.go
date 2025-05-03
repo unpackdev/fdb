@@ -4,15 +4,16 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"github.com/quic-go/quic-go"
-	"github.com/unpackdev/fdb"
-	"github.com/unpackdev/fdb/db"
-	transport_quic "github.com/unpackdev/fdb/transports/quic"
-	"github.com/unpackdev/fdb/types"
-	"golang.org/x/sync/errgroup"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/quic-go/quic-go"
+	"github.com/unpackdev/fdb"
+	"github.com/unpackdev/fdb/pkg/db"
+	transport_quic "github.com/unpackdev/fdb/pkg/transports/quic"
+	"github.com/unpackdev/fdb/pkg/types"
+	"golang.org/x/sync/errgroup"
 )
 
 // QuicSuite represents the QUIC-specific benchmark suite.

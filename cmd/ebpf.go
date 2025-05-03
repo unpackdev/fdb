@@ -2,9 +2,10 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/unpackdev/fdb/helpers"
 	"net"
 	"strings"
+
+	"github.com/unpackdev/fdb/pkg/helpers"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"

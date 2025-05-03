@@ -2,9 +2,10 @@ package cmd
 
 import (
 	"fmt"
-	"github.com/unpackdev/fdb/certs"
-	"github.com/urfave/cli/v2"
 	"os"
+
+	"github.com/unpackdev/fdb/pkg/certs"
+	"github.com/urfave/cli/v2"
 )
 
 // CertsCommand returns a cli.Command that generates a self-signed certificate

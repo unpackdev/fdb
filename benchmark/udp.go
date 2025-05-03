@@ -3,17 +3,18 @@ package benchmark
 import (
 	"context"
 	"fmt"
-	"github.com/pkg/errors"
-	"github.com/unpackdev/fdb"
-	"github.com/unpackdev/fdb/db"
-	transport_udp "github.com/unpackdev/fdb/transports/udp"
-	"github.com/unpackdev/fdb/types"
-	"go.uber.org/zap"
-	"golang.org/x/sync/errgroup"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/pkg/errors"
+	"github.com/unpackdev/fdb"
+	"github.com/unpackdev/fdb/pkg/db"
+	transport_udp "github.com/unpackdev/fdb/pkg/transports/udp"
+	"github.com/unpackdev/fdb/pkg/types"
+	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
 )
 
 // UdpSuite represents the benchmarking suite for UDP with buffer reuse and latency sampling.

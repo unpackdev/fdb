@@ -2,11 +2,12 @@ package benchmark
 
 import (
 	"crypto/rand"
-	"github.com/unpackdev/fdb/messages"
-	"github.com/unpackdev/fdb/types"
 	"math"
 	"strconv"
 	"time"
+
+	"github.com/unpackdev/fdb/pkg/messages"
+	"github.com/unpackdev/fdb/pkg/types"
 )
 
 // createWriteMessage generates a random write message

@@ -3,13 +3,14 @@ package cmd
 import (
 	"encoding/hex"
 	"fmt"
-	"github.com/pkg/errors"
-	"github.com/unpackdev/fdb/accounts"
-	"github.com/unpackdev/fdb/config"
-	"github.com/unpackdev/fdb/logger"
-	"github.com/unpackdev/fdb/rbac"
-	"github.com/unpackdev/fdb/types"
 	"strings"
+
+	"github.com/pkg/errors"
+	"github.com/unpackdev/fdb/pkg/accounts"
+	"github.com/unpackdev/fdb/pkg/config"
+	"github.com/unpackdev/fdb/pkg/logger"
+	"github.com/unpackdev/fdb/pkg/rbac"
+	"github.com/unpackdev/fdb/pkg/types"
 
 	libp2pCrypto "github.com/libp2p/go-libp2p/core/crypto"
 	libp2pPeer "github.com/libp2p/go-libp2p/core/peer"
