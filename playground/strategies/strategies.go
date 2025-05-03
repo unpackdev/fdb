@@ -96,14 +96,3 @@ func ParseCliArgs(cliCtx *cli.Context, info Info) map[string]any {
 
 	return args
 }
-
-// StrategyFactory is a function that creates a strategy prototype
-type StrategyFactory func(logger logger.Logger) Strategy
-
-// AvailableStrategies is a map of all available strategies and their factory functions
-// Add new strategies to this map to make them available in the playground
-var AvailableStrategies = map[string]StrategyFactory{
-	"write": func(logger logger.Logger) Strategy {
-		return NewWriteStrategy(logger, nil) // Nodes will be provided later
-	},
-}

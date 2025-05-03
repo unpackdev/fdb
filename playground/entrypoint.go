@@ -10,6 +10,7 @@ import (
 	"github.com/unpackdev/fdb/pkg/rbac"
 	"github.com/unpackdev/fdb/pkg/shutdown"
 	"github.com/unpackdev/fdb/pkg/types"
+	"github.com/unpackdev/fdb/playground/registry"
 	"github.com/unpackdev/fdb/playground/strategies"
 	"github.com/unpackdev/fdb/playground/suite"
 	"github.com/urfave/cli/v2"
@@ -73,7 +74,7 @@ func Run(cliCtx *cli.Context, cfg Config) error {
 	shutdownMgr.Start()
 
 	// Create the strategy registry
-	registry := NewRegistry(testLogger)
+	registry := registry.New(testLogger)
 
 	// Register all available strategies
 	registry.RegisterAll()
@@ -171,6 +172,6 @@ func Run(cliCtx *cli.Context, cfg Config) error {
 		testLogger.Error("Shutdown completed with errors", "error", err.Error())
 	}
 
-	testLogger.Info("Playground shutdown complete. Cause: %s", "cause", shutdownMgr.ShutdownCause())
+	testLogger.Info("Playground shutdown complete.", "cause", shutdownMgr.ShutdownCause())
 	return nil
 }

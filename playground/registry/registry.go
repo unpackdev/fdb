@@ -1,4 +1,4 @@
-package playground
+package registry
 
 import (
 	"context"
@@ -23,8 +23,8 @@ type Registry struct {
 	logger     logger.Logger
 }
 
-// NewRegistry creates a new strategy registry
-func NewRegistry(logger logger.Logger) *Registry {
+// New creates a new strategy registry
+func New(logger logger.Logger) *Registry {
 	return &Registry{
 		logger:     logger,
 		strategies: make(map[string]strategyEntry),
@@ -107,10 +107,10 @@ func (r *Registry) CreateStrategy(name string, logger logger.Logger, nodes suite
 	return entry.Strategy.CreateFn()(logger, nodes, mergedArgs)
 }
 
-// RegisterAll registers all available strategies from the strategies package
+// RegisterAll registers all available strategies from the registry package
 func (r *Registry) RegisterAll() {
 	// Register all strategies from the centralized map
-	for name, factory := range strategies.AvailableStrategies {
+	for name, factory := range AvailableStrategies {
 		// Create a prototype instance using the factory
 		strategy := factory(r.logger)
 
@@ -144,7 +144,7 @@ func (r *Registry) RunStrategy(ctx context.Context, name string, logger logger.L
 	case <-ctx.Done():
 		// External cancellation (shutdown manager)
 		logger.Info("Strategy stopping due to context cancellation")
-		
+
 	case <-completionCh:
 		// Strategy has completed naturally
 		logger.Info("Strategy completed its work successfully")
