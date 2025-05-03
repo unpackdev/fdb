@@ -189,7 +189,7 @@ func (t *TestNode) WaitForPeersConnected(expectedPeerCount int, timeout time.Dur
 // DIDs are created with persistence disabled (non-persistent keys).
 func InitializeNodes(
 	ctx context.Context,
-	testLogger logger.Logger,
+	loggerConfig config.Logger,
 	signerType types.SignerType,
 	nodeRoles []types.Role,
 	basePort int,
@@ -243,12 +243,7 @@ func InitializeNodes(
 
 		// Build the node configuration
 		nodeConfig := config.Config{
-			Id: fmt.Sprintf("playground_node_%d", i),
-			// Logger: config.Logger{
-			// 	Enabled:     true,
-			// 	Environment: "development",
-			// 	Level:       logLevel.String(),
-			// },
+			Id: fmt.Sprintf("playground_%s_%d", role, i),
 			Mdbx: config.Mdbx{
 				Enabled: true,
 				Nodes:   mdbxNodes,
@@ -318,6 +313,12 @@ func InitializeNodes(
 					TLS:     nil,
 				},
 			},
+		}
+
+		// Initialize the logger
+		testLogger, err := logger.CreateLogger(nodeConfig.Id, loggerConfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to initialize node %d logger: %w", i, err)
 		}
 
 		// Initialize metrics and tracing system (opentelemetry & prometheus)

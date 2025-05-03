@@ -39,7 +39,7 @@ func KeystoreCommand() *cli.Command {
 			// I hate to pass by reference logger everywhere...
 			// In case you wish to use your own zap logger you can disable logger here,
 			// implement your own and set the globals on your end.
-			_, zlErr := logger.InitializeGlobalLogger(cfg.Logger)
+			_, zlErr := logger.InitializeGlobalLogger("keygen", cfg.Logger)
 			if zlErr != nil {
 				return errors.Wrap(zlErr, "failure to initialize logger")
 			}

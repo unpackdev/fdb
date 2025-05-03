@@ -64,7 +64,7 @@ func Run(cliCtx *cli.Context, cfg Config) error {
 	}
 
 	// Initialize the logger
-	testLogger, err := logger.InitializeGlobalLogger(lCfg)
+	testLogger, err := logger.InitializeGlobalLogger("playground", lCfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize logger: %w", err)
 	}
@@ -83,7 +83,7 @@ func Run(cliCtx *cli.Context, cfg Config) error {
 	fmt.Printf("Initializing %d nodes with base port %d...\n", nodeCount, basePort)
 	nodes, err := suite.InitializeNodes(
 		shutdownMgr.Context(), // Use the shutdown manager's context
-		testLogger,
+		lCfg,
 		types.Ed25519SignerType,
 		roles,
 		basePort,

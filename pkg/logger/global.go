@@ -36,8 +36,8 @@ func G() Logger {
 
 // InitializeGlobalLogger initializes the global logger based on the provided configuration.
 // It should be called once during application startup.
-func InitializeGlobalLogger(cfg config.Logger) (Logger, error) {
-	l, err := Factory(cfg)
+func InitializeGlobalLogger(nodeId string, cfg config.Logger) (Logger, error) {
+	l, err := CreateLogger(nodeId, cfg)
 	if err != nil {
 		return nil, err
 	}

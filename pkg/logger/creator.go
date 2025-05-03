@@ -8,8 +8,8 @@ import (
 	"strings"
 )
 
-// Factory creates logger instances based on the configuration.
-func Factory(cfg config.Logger) (Logger, error) {
+// CreateLogger creates logger instances based on the configuration.
+func CreateLogger(nodeId string, cfg config.Logger) (Logger, error) {
 	if !cfg.Enabled {
 		return NewNoOpLogger(), nil
 	}
@@ -18,7 +18,7 @@ func Factory(cfg config.Logger) (Logger, error) {
 	// Extend this function to support more providers.
 	switch strings.ToLower(cfg.Environment) {
 	case "production", "development":
-		return NewZapLogger(cfg)
+		return NewZapLogger(nodeId, cfg)
 	default:
 		return nil, errors.New("unsupported environment for logger")
 	}

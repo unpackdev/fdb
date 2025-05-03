@@ -62,6 +62,7 @@ func GetFreePortForTest(t testing.TB) int {
 // SetupServerTest sets up the TCP server with a dynamic port.
 func SetupServerTest(t testing.TB, ctx context.Context, cfg config.TcpTransport) (logger.Logger, *observability.Observability, *Server) {
 	nodeConfig := config.Config{
+		Id: "test_node_1",
 		Logger: config.Logger{
 			Enabled:     true,
 			Environment: "development",
@@ -88,7 +89,7 @@ func SetupServerTest(t testing.TB, ctx context.Context, cfg config.TcpTransport)
 		},
 	}
 
-	gLog, err := logger.InitializeGlobalLogger(nodeConfig.Logger)
+	gLog, err := logger.InitializeGlobalLogger(nodeConfig.Id, nodeConfig.Logger)
 	require.NoError(t, err, "Failed to initialize global logger")
 
 	// Initialize Observability

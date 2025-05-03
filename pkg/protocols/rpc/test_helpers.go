@@ -25,6 +25,7 @@ func SetupRPCServerForTest(t testing.TB) (rpcInstance *RPC, addr string, cleanup
 
 	// Define node configuration.
 	nodeConfig := config.Config{
+		Id: "test_node_1",
 		Logger: config.Logger{
 			Enabled:     true,
 			Environment: "development",
@@ -44,7 +45,7 @@ func SetupRPCServerForTest(t testing.TB) (rpcInstance *RPC, addr string, cleanup
 	}
 
 	// Initialize global logger.
-	gLog, err := logger.InitializeGlobalLogger(nodeConfig.Logger)
+	gLog, err := logger.InitializeGlobalLogger(nodeConfig.Id, nodeConfig.Logger)
 	require.NoError(t, err, "Failed to initialize global logger")
 
 	// Initialize Observability.

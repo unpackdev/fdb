@@ -47,7 +47,7 @@ func New(ctx context.Context, cfg config.Config) (*FDB, error) {
 	// I hate to pass by reference logger everywhere...
 	// In case you wish to use your own zap logger you can disable logger here,
 	// implement your own and set the globals on your end.
-	zLog, zlErr := logger.InitializeGlobalLogger(cfg.Logger)
+	zLog, zlErr := logger.InitializeGlobalLogger(cfg.Id, cfg.Logger)
 	if zlErr != nil {
 		return nil, errors.Wrap(zlErr, "failure to initialize logger")
 	}

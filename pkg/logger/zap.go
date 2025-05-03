@@ -15,7 +15,7 @@ type ZapLogger struct {
 }
 
 // NewZapLogger creates a new ZapLogger based on the provided configuration.
-func NewZapLogger(cfg config.Logger) (*ZapLogger, error) {
+func NewZapLogger(nodeId string, cfg config.Logger) (*ZapLogger, error) {
 	var zapCfg zap.Config
 	switch strings.ToLower(cfg.Environment) {
 	case "production":
@@ -46,6 +46,8 @@ func NewZapLogger(cfg config.Logger) (*ZapLogger, error) {
 		return nil, err
 	}
 
+	// Add node_id as a standard field in all logs
+	logger = logger.With(zap.String("node_id", nodeId))
 	sugar := logger.Sugar()
 	return &ZapLogger{sugaredLogger: sugar}, nil
 }

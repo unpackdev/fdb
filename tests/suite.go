@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -242,6 +243,7 @@ func InitializeTestNodes(
 
 		// Build the node configuration
 		nodeConfig := config.Config{
+			Id: "test_node_" + strconv.Itoa(i),
 			Logger: config.Logger{
 				Enabled:     true,
 				Environment: "development",
@@ -368,7 +370,7 @@ func InitializeTestNodes(
 		}
 
 		// Initialize the logger
-		testLogger, err := logger.InitializeGlobalLogger(nodeConfig.Logger)
+		testLogger, err := logger.InitializeGlobalLogger(nodeConfig.Id, nodeConfig.Logger)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize logger for node %d: %w", i, err)
 		}
