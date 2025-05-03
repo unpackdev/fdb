@@ -10,8 +10,8 @@ import (
 
 // ArgMapping defines how CLI flags map to strategy parameters
 type ArgMapping struct {
-	// CliFlag is the name of the flag in the CLI (e.g. "data-size")
-	CliFlag string
+	// Flag is the name of the flag in the CLI (e.g. "data-size")
+	Flag string
 
 	// ParamKey is the key in the args map passed to the strategy (e.g. "data_size_kb")
 	ParamKey string
@@ -65,8 +65,8 @@ type Strategy interface {
 	CompletionCh() <-chan struct{}
 }
 
-// ParseCliArgs converts CLI context args to strategy args based on the mappings
-func ParseCliArgs(cliCtx *cli.Context, info Info) map[string]any {
+// ParseArgs converts CLI context args to strategy args based on the mappings
+func ParseArgs(cliCtx *cli.Context, info Info) map[string]any {
 	args := make(map[string]any)
 
 	// Add default values from DefaultArgs
@@ -76,20 +76,20 @@ func ParseCliArgs(cliCtx *cli.Context, info Info) map[string]any {
 
 	// Parse args from CLI flags based on the mappings
 	for _, mapping := range info.ArgMappings {
-		if cliCtx.IsSet(mapping.CliFlag) {
+		if cliCtx.IsSet(mapping.Flag) {
 			// Get the value based on type inference
 			switch mapping.DefaultValue.(type) {
 			case int:
-				args[mapping.ParamKey] = cliCtx.Int(mapping.CliFlag)
+				args[mapping.ParamKey] = cliCtx.Int(mapping.Flag)
 			case string:
-				args[mapping.ParamKey] = cliCtx.String(mapping.CliFlag)
+				args[mapping.ParamKey] = cliCtx.String(mapping.Flag)
 			case bool:
-				args[mapping.ParamKey] = cliCtx.Bool(mapping.CliFlag)
+				args[mapping.ParamKey] = cliCtx.Bool(mapping.Flag)
 			case float64:
-				args[mapping.ParamKey] = cliCtx.Float64(mapping.CliFlag)
+				args[mapping.ParamKey] = cliCtx.Float64(mapping.Flag)
 			default:
 				// For other types, just use the string value
-				args[mapping.ParamKey] = cliCtx.String(mapping.CliFlag)
+				args[mapping.ParamKey] = cliCtx.String(mapping.Flag)
 			}
 		}
 	}

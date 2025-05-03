@@ -136,7 +136,7 @@ func Run(cliCtx *cli.Context, cfg Config) error {
 		}
 
 		// Parse CLI arguments using the strategy's argument mappings
-		args := strategies.ParseCliArgs(cliCtx, strategyInfo)
+		args := strategies.ParseArgs(cliCtx, strategyInfo)
 
 		// Create a channel to signal when the strategy is done
 		strategyCh := make(chan error, 1)
