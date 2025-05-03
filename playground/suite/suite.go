@@ -27,7 +27,6 @@ import (
 	"github.com/unpackdev/fdb/pkg/transports/tcp"
 	"github.com/unpackdev/fdb/pkg/types"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 type TestNodes []*TestNode
@@ -190,7 +189,7 @@ func (t *TestNode) WaitForPeersConnected(expectedPeerCount int, timeout time.Dur
 // DIDs are created with persistence disabled (non-persistent keys).
 func InitializeNodes(
 	ctx context.Context,
-	logLevel zapcore.Level,
+	testLogger logger.Logger,
 	signerType types.SignerType,
 	nodeRoles []types.Role,
 	basePort int,
@@ -244,11 +243,11 @@ func InitializeNodes(
 
 		// Build the node configuration
 		nodeConfig := config.Config{
-			Logger: config.Logger{
-				Enabled:     true,
-				Environment: "development",
-				Level:       logLevel.String(),
-			},
+			// Logger: config.Logger{
+			// 	Enabled:     true,
+			// 	Environment: "development",
+			// 	Level:       logLevel.String(),
+			// },
 			Mdbx: config.Mdbx{
 				Enabled: true,
 				Nodes:   mdbxNodes,
@@ -318,12 +317,6 @@ func InitializeNodes(
 					TLS:     nil,
 				},
 			},
-		}
-
-		// Initialize the logger
-		testLogger, err := logger.InitializeGlobalLogger(nodeConfig.Logger)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize logger for node %d: %w", i, err)
 		}
 
 		// Initialize metrics and tracing system (opentelemetry & prometheus)
