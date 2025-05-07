@@ -11,17 +11,18 @@ import (
 
 // Message struct represents a UDP message
 type Message struct {
-	Handler types.HandlerType // The handler type (1 byte)
-	Key     [32]byte          // Fixed 32-byte key (e.g., Ethereum hash)
-	Data    []byte            // The remaining data after the key
+	Handler  types.HandlerType // The handler type (1 byte)
+	Priority types.Priority    // The priority (1 byte)
+	Key      [32]byte          // Fixed 32-byte key (e.g., Ethereum hash)
+	Data     []byte            // The remaining data after the key
 }
 
 // EncodeWithBuffer encodes the Message struct into a provided byte slice (buffer).
 // Assumes the buffer is large enough and avoids allocating new buffers.
 // Designed to be used with sync.Pool
 func (m *Message) EncodeWithBuffer(buf []byte) ([]byte, error) {
-	// Calculate the total message length (1 byte for handler + 32 bytes for key + 4 bytes for data length + actual data)
-	msgLen := 1 + 32 + 4 + len(m.Data)
+	// Calculate the total message length (1 byte for handler + 1 byte for priority + 32 bytes for key + 4 bytes for data length + actual data)
+	msgLen := 1 + 1 + 32 + 4 + len(m.Data)
 
 	// Ensure the buffer is large enough (zero-allocation requires that the buffer be managed externally)
 	if len(buf) < msgLen {
@@ -31,14 +32,17 @@ func (m *Message) EncodeWithBuffer(buf []byte) ([]byte, error) {
 	// Set handler type
 	buf[0] = byte(m.Handler)
 
+	// Set priority
+	buf[1] = byte(m.Priority)
+
 	// Copy the 32-byte key
-	copy(buf[1:33], m.Key[:])
+	copy(buf[2:34], m.Key[:])
 
 	// Set the length of the data (4 bytes)
-	binary.BigEndian.PutUint32(buf[33:37], uint32(len(m.Data)))
+	binary.BigEndian.PutUint32(buf[34:38], uint32(len(m.Data)))
 
 	// Copy the data
-	copy(buf[37:], m.Data)
+	copy(buf[38:], m.Data)
 
 	// Return the portion of the buffer that was actually used
 	return buf[:msgLen], nil
@@ -47,8 +51,8 @@ func (m *Message) EncodeWithBuffer(buf []byte) ([]byte, error) {
 // Encode encodes the Message struct into a byte slice.
 // This method allocates a new buffer for every call, unlike EncodeWithBuffer which reuses a buffer.
 func (m *Message) Encode() ([]byte, error) {
-	// Calculate the total message length (1 byte for handler + 32 bytes for key + 4 bytes for data length + actual data)
-	msgLen := 1 + 32 + 4 + len(m.Data)
+	// Calculate the total message length (1 byte for handler + 1 byte for priority + 32 bytes for key + 4 bytes for data length + actual data)
+	msgLen := 1 + 1 + 32 + 4 + len(m.Data)
 
 	// Allocate a new buffer
 	buf := make([]byte, msgLen)
@@ -56,41 +60,45 @@ func (m *Message) Encode() ([]byte, error) {
 	// Set handler type
 	buf[0] = byte(m.Handler)
 
+	// Set priority
+	buf[1] = byte(m.Priority)
+
 	// Copy the 32-byte key
-	copy(buf[1:33], m.Key[:])
+	copy(buf[2:34], m.Key[:])
 
 	// Set the length of the data (4 bytes)
-	binary.BigEndian.PutUint32(buf[33:37], uint32(len(m.Data)))
+	binary.BigEndian.PutUint32(buf[34:38], uint32(len(m.Data)))
 
 	// Copy the data
-	copy(buf[37:], m.Data)
+	copy(buf[38:], m.Data)
 
 	return buf, nil
 }
 
 // Decode decodes a byte slice into a Message struct without allocating new memory for data.
 func Decode(data []byte) (*Message, error) {
-	if len(data) < 37 { // 1 byte for handler + 32 bytes for key + 4 bytes for data length
-		return nil, fmt.Errorf("data too short, must be at least 37 bytes")
+	if len(data) < 38 { // 1 byte for handler + 1 byte for priority + 32 bytes for key + 4 bytes for data length
+		return nil, fmt.Errorf("data too short, must be at least 38 bytes")
 	}
 
 	msg := &Message{
-		Handler: types.HandlerType(data[0]),
+		Handler:  types.HandlerType(data[0]),
+		Priority: types.Priority(data[1]),
 	}
 
 	// Copy the 32-byte key
-	copy(msg.Key[:], data[1:33])
+	copy(msg.Key[:], data[2:34])
 
 	// Read the 4-byte data length
-	dataLen := binary.BigEndian.Uint32(data[33:37])
+	dataLen := binary.BigEndian.Uint32(data[34:38])
 
 	// Ensure the length of the remaining data matches the declared length
-	if len(data[37:]) < int(dataLen) {
-		return nil, fmt.Errorf("data length mismatch, expected %d bytes but got %d bytes", dataLen, len(data[37:]))
+	if len(data[38:]) < int(dataLen) {
+		return nil, fmt.Errorf("data length mismatch, expected %d bytes but got %d bytes", dataLen, len(data[38:]))
 	}
 
 	// Reuse the data slice instead of allocating a new one
-	msg.Data = data[37 : 37+dataLen]
+	msg.Data = data[38 : 38+dataLen]
 
 	return msg, nil
 }
@@ -103,9 +111,10 @@ func GenerateRandomMessage(handler types.HandlerType) (*Message, error) {
 	}
 
 	return &Message{
-		Handler: handler,
-		Key:     key,
-		Data:    nil, // No data for this message
+		Handler:  handler,
+		Priority: types.PriorityNormal, // Default to normal priority
+		Key:      key,
+		Data:     nil, // No data for this message
 	}, nil
 }
 
@@ -117,13 +126,14 @@ func GenerateRandomMessageWithData(handler types.HandlerType, data []byte) (*Mes
 	}
 
 	return &Message{
-		Handler: handler,
-		Key:     key,
-		Data:    data,
+		Handler:  handler,
+		Priority: types.PriorityNormal, // Default to normal priority
+		Key:      key,
+		Data:     data,
 	}, nil
 }
 
-// Helper function to generate a random 32-byte key.
+// GenerateRandomKey Helper function to generate a random 32-byte key.
 func GenerateRandomKey() ([32]byte, error) {
 	var key [32]byte
 	_, err := io.ReadFull(rand.Reader, key[:])

@@ -227,9 +227,10 @@ func (s *WriteStrategy) performWriteOperation(ctx context.Context, workerID, opI
 
 	// Create a write message with the key and data
 	writeMsg := &messages.Message{
-		Handler: types.WriteHandlerType,
-		Key:     key,
-		Data:    data,
+		Handler:  types.WriteHandlerType,
+		Priority: types.PriorityNormal, // Set a normal priority for this write operation
+		Key:      key,
+		Data:     data,
 	}
 
 	// Encode the message

@@ -556,13 +556,13 @@ func (d *P2PDistributor) distributeToAllPeers(batch *RecordBatch) {
 		return
 	}
 
-	for _, peer := range peers {
-		if peer == d.node.network.Host().ID() {
+	for _, p := range peers {
+		if p == d.node.network.Host().ID() {
 			continue
 		}
 
 		// Send in parallel but with throttling
-		go d.distributeToPeer(peer, batch.Records)
+		go d.distributeToPeer(p, batch.Records)
 	}
 }
 
