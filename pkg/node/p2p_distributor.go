@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"github.com/unpackdev/fdb/pkg/types"
 	"sync"
 	"time"
 
@@ -25,24 +26,6 @@ const (
 // P2PDistributorStateType is the type identifier for P2PDistributor state
 const P2PDistributorStateType state.StateType = "p2p_distributor"
 
-// Priority represents the importance level of a record batch
-type Priority uint8
-
-const (
-	PriorityHigh Priority = iota
-	PriorityNormal
-	PriorityLow
-)
-
-// Target specifies the distribution target type
-type Target uint8
-
-const (
-	TargetAll Target = iota
-	TargetValidators
-	TargetDirectPeer
-)
-
 // DistributionStats tracks performance metrics
 type DistributionStats struct {
 	RecordsDistributed int64
@@ -56,8 +39,8 @@ type DistributionStats struct {
 // RecordBatch represents a batch of records to be distributed
 type RecordBatch struct {
 	Records    []db.WriteRequest
-	Priority   Priority
-	Target     Target
+	Priority   types.Priority
+	Target     types.Target
 	TargetPeer *peer.ID // Only set if Target is TargetDirectPeer
 }
 
@@ -439,13 +422,13 @@ func (d *P2PDistributor) distributeBatch(batch *RecordBatch) {
 		zap.Uint8("priority", uint8(batch.Priority)))
 
 	switch batch.Target {
-	case TargetAll:
+	case types.TargetAll:
 		d.logger.Debug("Distributing to all peers", zap.Int("record_count", recordCount))
 		d.distributeToAllPeers(batch)
-	case TargetValidators:
+	case types.TargetValidators:
 		d.logger.Debug("Distributing to validators", zap.Int("record_count", recordCount))
 		d.distributeToValidators(batch)
-	case TargetDirectPeer:
+	case types.TargetDirectPeer:
 		if batch.TargetPeer != nil {
 			d.logger.Debug("Distributing to direct peer",
 				zap.Int("record_count", recordCount),
@@ -458,7 +441,7 @@ func (d *P2PDistributor) distributeBatch(batch *RecordBatch) {
 }
 
 // DistributeRecord adds a record to the appropriate distribution queue
-func (d *P2PDistributor) DistributeRecord(key [32]byte, value []byte, priority Priority, target Target) error {
+func (d *P2PDistributor) DistributeRecord(key [32]byte, value []byte, priority types.Priority, target types.Target) error {
 	// Create a deep copy of the value when a record first enters the system
 	valueCopy := make([]byte, len(value))
 	copy(valueCopy, value)
@@ -477,11 +460,11 @@ func (d *P2PDistributor) DistributeRecord(key [32]byte, value []byte, priority P
 	// Queue based on priority
 	var queue chan *RecordBatch
 	switch priority {
-	case PriorityHigh:
+	case types.PriorityHigh:
 		queue = d.highPriorityQueue
-	case PriorityNormal:
+	case types.PriorityNormal:
 		queue = d.normalQueue
-	case PriorityLow:
+	case types.PriorityLow:
 		queue = d.lowPriorityQueue
 	}
 
@@ -508,7 +491,7 @@ func (d *P2PDistributor) DistributeRecord(key [32]byte, value []byte, priority P
 }
 
 // DistributeRecordToPeer sends a record directly to a specific peer
-func (d *P2PDistributor) DistributeRecordToPeer(key [32]byte, value []byte, peerID peer.ID, priority Priority) error {
+func (d *P2PDistributor) DistributeRecordToPeer(key [32]byte, value []byte, peerID peer.ID, priority types.Priority) error {
 	// Create a deep copy of the value when a record first enters the system
 	valueCopy := make([]byte, len(value))
 	copy(valueCopy, value)
@@ -521,18 +504,18 @@ func (d *P2PDistributor) DistributeRecordToPeer(key [32]byte, value []byte, peer
 	batch := &RecordBatch{
 		Records:    []db.WriteRequest{record},
 		Priority:   priority,
-		Target:     TargetDirectPeer,
+		Target:     types.TargetDirectPeer,
 		TargetPeer: &peerID,
 	}
 
 	// Queue based on priority
 	var queue chan *RecordBatch
 	switch priority {
-	case PriorityHigh:
+	case types.PriorityHigh:
 		queue = d.highPriorityQueue
-	case PriorityNormal:
+	case types.PriorityNormal:
 		queue = d.normalQueue
-	case PriorityLow:
+	case types.PriorityLow:
 		queue = d.lowPriorityQueue
 	}
 

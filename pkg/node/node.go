@@ -2,6 +2,7 @@ package node
 
 import (
 	"context"
+	"github.com/unpackdev/fdb/pkg/types"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/unpackdev/fdb/pkg/accounts"
@@ -245,17 +246,17 @@ func (n *Node) Distributor() *P2PDistributor {
 
 // DistributeRecord adds a record to be distributed across the P2P network
 func (n *Node) DistributeRecord(key [32]byte, value []byte) error {
-	return n.distributor.DistributeRecord(key, value, PriorityNormal, TargetAll)
+	return n.distributor.DistributeRecord(key, value, types.PriorityNormal, types.TargetAll)
 }
 
 // DistributeRecordWithPriority adds a record with specified priority and target
-func (n *Node) DistributeRecordWithPriority(key [32]byte, value []byte, priority Priority, target Target) error {
+func (n *Node) DistributeRecordWithPriority(key [32]byte, value []byte, priority types.Priority, target types.Target) error {
 	return n.distributor.DistributeRecord(key, value, priority, target)
 }
 
 // DistributeRecordToPeer sends a record directly to a specific peer
 func (n *Node) DistributeRecordToPeer(key [32]byte, value []byte, peerID peer.ID) error {
-	return n.distributor.DistributeRecordToPeer(key, value, peerID, PriorityNormal)
+	return n.distributor.DistributeRecordToPeer(key, value, peerID, types.PriorityNormal)
 }
 
 func (n *Node) Start() error {

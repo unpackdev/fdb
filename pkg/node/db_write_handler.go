@@ -150,7 +150,7 @@ func (wh *DbWriteHandler) Handle(conn transports.Connection, frame []byte) {
 	if wh.distributor != nil {
 		// Use high priority for writes coming from direct client requests
 		go func() {
-			if err := wh.distributor.DistributeRecord(key, value, PriorityHigh, TargetAll); err != nil {
+			if err := wh.distributor.DistributeRecord(key, value, types.PriorityHigh, types.TargetAll); err != nil {
 				wh.logger.Error("Failed to distribute record",
 					zap.Error(err),
 					zap.Binary("key", key[:]),
