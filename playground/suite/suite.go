@@ -160,6 +160,10 @@ func (t *TestNode) FDB() *fdb.FDB {
 	return t.fDb
 }
 
+func (t *TestNode) Client() *client.Client {
+	return t.client
+}
+
 func (t *TestNode) WaitForPeersConnected(expectedPeerCount int, timeout time.Duration) error {
 	timeoutCh := time.After(timeout)
 	ticker := time.NewTicker(500 * time.Millisecond)
@@ -184,7 +188,7 @@ func (t *TestNode) WaitForPeersConnected(expectedPeerCount int, timeout time.Dur
 	}
 }
 
-// InitializeTestNodes initializes 'count' number of nodes for testing.
+// InitializeNodes initializes 'count' number of nodes for testing.
 // Each node is assigned a unique port starting from 'basePort'.
 // DIDs are created with persistence disabled (non-persistent keys).
 func InitializeNodes(
@@ -276,11 +280,6 @@ func InitializeNodes(
 						Enabled: true,
 						IPv4:    "127.0.0.1",
 						Port:    tcpPort,
-						// TLS: &config.TLS{
-						// 	Insecure: true,
-						// 	Key:      "../data/certs/key.pem",
-						// 	Cert:     "../data/certs/cert.pem",
-						// },
 					},
 				},
 			},
@@ -419,18 +418,18 @@ func InitializeNodes(
 		}
 
 		// Initialize client to raw tcp socket, not actual RPC client.
-		client, err := CreateClient(ctx, tNode.logger, tNode.config.GetTransportByType(types.TCPTransportType).Config.(*config.TcpTransport).Port)
+		tcpClient, err := CreateClient(ctx, tNode.logger, tNode.config.GetTransportByType(types.TCPTransportType).Config.(*config.TcpTransport).Port)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create client for node %s: %w", tNode.peerID, err)
 		}
 
 		// Connect to the node
-		connectErr := client.Start(ctx)
+		connectErr := tcpClient.Start(ctx)
 		if connectErr != nil {
 			return nil, fmt.Errorf("failed to connect to node %s: %w", tNode.peerID, connectErr)
 		}
 
-		tNode.client = client
+		tNode.client = tcpClient
 	}
 
 	for _, tNode := range nodes {
@@ -480,7 +479,7 @@ func ShutdownTestNodes(nodes []*TestNode) error {
 				return
 			}
 
-			// Remove temporary directory
+			// Remove the temporary directory
 			if err := os.RemoveAll(n.dir); err != nil {
 				errChan <- fmt.Errorf("failed to remove temp directory %s: %w", n.dir, err)
 				return

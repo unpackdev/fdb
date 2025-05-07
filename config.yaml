@@ -128,7 +128,7 @@ rpc:
 pprof:
   - name: fdb
     enabled: true
-    addr: "0.0.0.0:6060"
+    addr: "0.0.0.0:6065"
 
 # ======================================================================================
 # OBSERVABILITY CONFIGURATION (Metrics and Tracing)

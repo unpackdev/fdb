@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/unpackdev/fdb/pkg/logger"
+	"github.com/unpackdev/fdb/pkg/messages"
+	"github.com/unpackdev/fdb/pkg/types"
 	"github.com/unpackdev/fdb/playground/suite"
 )
 
@@ -109,12 +111,14 @@ func WithTotalOperations(ops int) WriteStrategyOption {
 
 // Start begins executing the write strategy
 func (s *WriteStrategy) Start(ctx context.Context) error {
-	s.logger.Info("Starting write strategy",
+	s.logger.Info(
+		"Starting write strategy",
 		"workers", s.workersCount,
 		"data_size_kb", s.dataSizeKB,
 		"ops_per_sec", s.opsPerSec,
 		"total_ops", s.totalOps,
-		"target_node", s.targetNode.PeerID().String())
+		"target_node", s.targetNode.PeerID().String(),
+	)
 
 	ctx, s.cancel = context.WithCancel(ctx)
 	s.startTime = time.Now()
@@ -209,20 +213,53 @@ func (s *WriteStrategy) runWorker(ctx context.Context, id, ops int, delay time.D
 
 // performWriteOperation executes a single write operation
 func (s *WriteStrategy) performWriteOperation(ctx context.Context, workerID, opID int) error {
-	key := fmt.Sprintf("%s%d-%d", s.keyPrefix, workerID, opID)
+	//key := fmt.Sprintf("%s%d-%d", s.keyPrefix, workerID, opID)
 
 	data, err := suite.GenerateTestDataKB(s.dataSizeKB, false)
 	if err != nil {
 		return fmt.Errorf("failed to generate test data: %w", err)
 	}
 
-	// TODO: Implement actual write operation using the client
-	// This is a placeholder for the actual implementation that would use the
-	// optimized BatchWriter component with its 2048 batch size and 100ms flush interval
+	key, err := messages.GenerateRandomKey()
+	if err != nil {
+		return fmt.Errorf("failed to generate random key: %w", err)
+	}
 
-	s.logger.Debug("Write operation",
+	// Create a write message with the key and data
+	writeMsg := &messages.Message{
+		Handler: types.WriteHandlerType,
+		Key:     key,
+		Data:    data,
+	}
+
+	// Encode the message
+	encodedWriteMsg, err := writeMsg.Encode()
+	if err != nil {
+		return fmt.Errorf("failed to encode write message: %w", err)
+	}
+
+	// Send the message to the target node using the client
+	// This leverages the optimized BatchWriter component with 2048 batch size and 100ms flush interval
+	// that's already configured in the underlying implementation
+	response, err := s.targetNode.SendAndReceiveMessage(
+		ctx,
+		s.targetNode,
+		types.TCPTransportType,
+		types.WriteHandlerType,
+		encodedWriteMsg,
+		5*time.Second,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to write record to target node: %w", err)
+	}
+
+	s.logger.Debug(
+		"Write operation successful",
 		"key", key,
-		"data_size", len(data))
+		"data_size", len(data),
+		"worker_id", workerID,
+		"response", response,
+	)
 
 	return nil
 }

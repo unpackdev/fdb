@@ -46,30 +46,24 @@ func CreateClient(ctx context.Context, logger logger.Logger, port int) (*client.
 // Send helper methods
 // -----------------------------------------------------------------------------
 
-// SendMessage sends a message to the target node and returns an error if the
-// send fails.
-func (t *TestNode) SendMessage(targetNode *TestNode, transportType types.TransportType, handlerType types.HandlerType, data []byte) error {
-	// Ensure client is initialized
+// SendMessage sends a message to the target node and returns an error if sending fails.
+func (t *TestNode) SendMessage(ctx context.Context, targetNode *TestNode, transportType types.TransportType, handlerType types.HandlerType, data []byte) error {
 	if targetNode.client == nil {
 		return errors.New("client not initialized")
 	}
 
-	// Get the TCP transport from the client
-	tcpTransport, err := targetNode.client.GetTransport("tcp")
+	tcpTransport, err := targetNode.client.GetTransportByType(transportType)
 	if err != nil {
-		return fmt.Errorf("failed to get TCP transport: %w", err)
+		return fmt.Errorf("failed to get %s transport: %w", transportType, err)
 	}
 
-	// Create and encode the message
 	var encodedMsg []byte
-	if _, decErr := messages.Decode(data); decErr == nil {
-		// Data is already an encoded message
+	if _, decErr := messages.Decode(data); decErr == nil { // Data is already an encoded message
 		encodedMsg = data
 	} else {
-		// Generate a new message with the data
-		msg, err := messages.GenerateRandomMessageWithData(handlerType, data)
-		if err != nil {
-			return fmt.Errorf("failed to generate message: %w", err)
+		msg, mErr := messages.GenerateRandomMessageWithData(handlerType, data)
+		if mErr != nil {
+			return fmt.Errorf("failed to generate message: %w", mErr)
 		}
 
 		if encodedMsg, err = msg.Encode(); err != nil {
@@ -77,14 +71,25 @@ func (t *TestNode) SendMessage(targetNode *TestNode, transportType types.Transpo
 		}
 	}
 
-	// Send the message using the transport
-	if err := tcpTransport.Send(encodedMsg); err != nil {
-		return fmt.Errorf("failed to send message: %w", err)
+	sendCh := make(chan error, 1)
+	go func() {
+		sendCh <- tcpTransport.Send(encodedMsg)
+	}()
+
+	select {
+	case sErr := <-sendCh:
+		if sErr != nil {
+			return fmt.Errorf("failed to send message: %w", sErr)
+		}
+	case <-ctx.Done():
+		return fmt.Errorf("message send cancelled: %w", ctx.Err())
 	}
 
-	t.logger.Debug("Sent message",
+	t.logger.Debug(
+		"Sent message",
 		zap.Int("bytes", len(encodedMsg)),
-		zap.Stringer("handler_type", handlerType))
+		zap.Stringer("handler_type", handlerType),
+	)
 
 	return nil
 }
@@ -96,16 +101,14 @@ func (t *TestNode) SendMessage(targetNode *TestNode, transportType types.Transpo
 // SendAndReceiveMessage sends a message to another node and waits for a
 // response. This implementation uses the client package's ResponseHandler for
 // asynchronous but reliable large payload handling.
-func (t *TestNode) SendAndReceiveMessage(targetNode *TestNode, transportType types.TransportType, handlerType types.HandlerType, data []byte, timeout time.Duration) ([]byte, error) {
-	// Ensure client is initialized
+func (t *TestNode) SendAndReceiveMessage(ctx context.Context, targetNode *TestNode, transportType types.TransportType, handlerType types.HandlerType, data []byte, timeout time.Duration) ([]byte, error) {
 	if targetNode.client == nil {
 		return nil, errors.New("client not initialized")
 	}
 
-	// Get the TCP transport from the client
-	tcp, err := targetNode.client.GetTransport("tcp")
+	tcp, err := targetNode.client.GetTransportByType(transportType)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get TCP transport: %w", err)
+		return nil, fmt.Errorf("failed to get %s transport: %w", transportType, err)
 	}
 
 	tcpTransport, ok := tcp.(*client.TCPTransport)
@@ -141,7 +144,8 @@ func (t *TestNode) SendAndReceiveMessage(targetNode *TestNode, transportType typ
 	if len(encodedMsg) > maxChunkSize {
 		t.logger.Info("Using chunked message protocol for large payload",
 			zap.Int("size", len(encodedMsg)),
-			zap.Stringer("handler", handlerType))
+			zap.Stringer("handler", handlerType),
+		)
 
 		// Prepare the chunked message with a 4-byte length prefix
 		// The server expects: [total_size(4 bytes)][payload...]
@@ -154,32 +158,71 @@ func (t *TestNode) SendAndReceiveMessage(targetNode *TestNode, transportType typ
 		// Replace the original message with the chunked version
 		encodedMsg = chunkedMsg
 
-		t.logger.Debug("Prepared chunked message",
+		t.logger.Debug(
+			"Prepared chunked message",
 			zap.Int("original_size", len(encodedMsg)-4),
-			zap.Int("with_prefix_size", len(encodedMsg)))
+			zap.Int("with_prefix_size", len(encodedMsg)),
+		)
 	}
 
-	// Send the message
+	// Send the message with context cancellation support
 	start := time.Now()
-	if err := tcpTransport.Send(encodedMsg); err != nil {
-		// Make sure to unregister the response channel on error
+	sendCh := make(chan error, 1)
+	go func() {
+		sendCh <- tcpTransport.Send(encodedMsg)
+	}()
+
+	// Wait for either the send to complete or the context to be cancelled
+	select {
+	case err := <-sendCh:
+		if err != nil {
+			// Make sure to unregister the response channel on error
+			tcpTransport.UnregisterResponseChannel(responseType)
+			return nil, fmt.Errorf("failed to send message: %w", err)
+		}
+	case <-ctx.Done():
+		// Make sure to unregister the response channel on context cancellation
 		tcpTransport.UnregisterResponseChannel(responseType)
-		return nil, fmt.Errorf("failed to send message: %w", err)
+		return nil, fmt.Errorf("message send cancelled: %w", ctx.Err())
 	}
 
-	t.logger.Debug("Sent message",
+	t.logger.Debug(
+		"Sent message",
 		zap.Int("bytes", len(encodedMsg)),
-		zap.Stringer("handler", handlerType))
+		zap.Stringer("handler", handlerType),
+	)
 
-	// Wait for the response with the provided timeout
-	response, err := tcpTransport.WaitForResponseWithTimeout(responseCh, timeout)
-	if err != nil {
-		return nil, fmt.Errorf("error waiting for response: %w", err)
+	// Create a response channel to get the result from WaitForResponseWithTimeout
+	respCh := make(chan struct {
+		resp []byte
+		err  error
+	}, 1)
+
+	// Start a goroutine to wait for the response
+	go func() {
+		resp, err := tcpTransport.WaitForResponseWithTimeout(responseCh, timeout)
+		respCh <- struct {
+			resp []byte
+			err  error
+		}{resp, err}
+	}()
+
+	// Wait for either the response or context cancellation
+	select {
+	case result := <-respCh:
+		if result.err != nil {
+			return nil, result.err
+		}
+		latency := time.Since(start)
+		t.logger.Debug(
+			"Received response",
+			zap.Int("bytes", len(result.resp)),
+			zap.Duration("latency", latency),
+		)
+		return result.resp, nil
+	case <-ctx.Done():
+		// Context was cancelled while waiting for response
+		tcpTransport.UnregisterResponseChannel(responseType)
+		return nil, fmt.Errorf("waiting for response cancelled: %w", ctx.Err())
 	}
-
-	latency := time.Since(start)
-	t.logger.Debug("Received response",
-		zap.Int("bytes", len(response)),
-		zap.Duration("latency", latency))
-	return response, nil
 }

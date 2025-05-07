@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/unpackdev/fdb/pkg/types"
 	"sync"
 	"time"
 )
@@ -40,6 +41,17 @@ func (c *Client) GetTransport(name string) (Transport, error) {
 	transport, exists := c.transports[name]
 	if !exists {
 		return nil, errors.New("transport not found")
+	}
+	return transport, nil
+}
+
+// GetTransportByType retrieves a registered transport by type
+func (c *Client) GetTransportByType(name types.TransportType) (Transport, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	transport, exists := c.transports[name.String()]
+	if !exists {
+		return nil, fmt.Errorf("transport by type not found: %s", name)
 	}
 	return transport, nil
 }
@@ -89,22 +101,22 @@ func (c *Client) SendAndReceiveMessage(name string, data []byte, timeout time.Du
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Check if we're dealing with a TCPTransport which has advanced response handling
 	tcpTransport, ok := transport.(*TCPTransport)
 	if !ok {
 		return nil, fmt.Errorf("SendAndReceiveMessage is only supported for TCP transport, got %T", transport)
 	}
-	
+
 	// Get the response message type - use the success status
 	responseType := MessageType(1) // Using 1 as a default success value
-	
+
 	// Register a response channel before sending the message
 	responseCh := tcpTransport.RegisterResponseChannel(responseType)
-	
+
 	// Define the maximum size for non-chunked messages
 	const maxChunkSize = 1024 * 1024 // 1MB
-	
+
 	// For large payloads, use chunking protocol to ensure reliable transmission
 	encodedMsg := data
 	if len(data) > maxChunkSize {
@@ -112,26 +124,26 @@ func (c *Client) SendAndReceiveMessage(name string, data []byte, timeout time.Du
 		// The server expects: [total_size(4 bytes)][payload...]
 		lengthPrefix := make([]byte, 4)
 		binary.LittleEndian.PutUint32(lengthPrefix, uint32(len(data)))
-		
+
 		// Prepend the length prefix to the message
 		chunkedMsg := append(lengthPrefix, data...)
-		
+
 		// Replace the original message with the chunked version
 		encodedMsg = chunkedMsg
 	}
-	
+
 	// Send the message
 	if err := tcpTransport.Send(encodedMsg); err != nil {
 		// Make sure to unregister the response channel on error
 		tcpTransport.UnregisterResponseChannel(responseType)
 		return nil, fmt.Errorf("failed to send message: %w", err)
 	}
-	
+
 	// Wait for the response with the provided timeout
 	response, err := tcpTransport.WaitForResponseWithTimeout(responseCh, timeout)
 	if err != nil {
 		return nil, fmt.Errorf("error waiting for response: %w", err)
 	}
-	
+
 	return response, nil
 }
