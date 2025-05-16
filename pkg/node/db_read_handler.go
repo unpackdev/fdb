@@ -44,7 +44,7 @@ func (rh *DbReadHandler) Handle(conn transports.Connection, frame []byte) {
 		errorMsg := "Invalid message format"
 
 		// Create a DBResponse with error status
-		dbResp := &packets.DBResponse{
+		dbResp := &packets.MessageResponse{
 			Status: types.HandlerStatusError,
 			Length: uint32(len(errorMsg)),
 			Data:   []byte(errorMsg),
@@ -76,7 +76,7 @@ func (rh *DbReadHandler) Handle(conn transports.Connection, frame []byte) {
 		errorMsg := "Error reading from database"
 
 		// Create a DBResponse with error status
-		dbResp := &packets.DBResponse{
+		dbResp := &packets.MessageResponse{
 			Status: types.HandlerStatusError,
 			Length: uint32(len(errorMsg)),
 			Data:   []byte(errorMsg),
@@ -98,7 +98,7 @@ func (rh *DbReadHandler) Handle(conn transports.Connection, frame []byte) {
 		errorMsg := "No value found for key"
 
 		// Create a DBResponse with error status
-		dbResp := &packets.DBResponse{
+		dbResp := &packets.MessageResponse{
 			Status: types.HandlerStatusError,
 			Length: uint32(len(errorMsg)),
 			Data:   []byte(errorMsg),
@@ -111,7 +111,7 @@ func (rh *DbReadHandler) Handle(conn transports.Connection, frame []byte) {
 	}
 
 	// Create a success response using packets.DBResponse
-	dbResp := &packets.DBResponse{
+	dbResp := &packets.MessageResponse{
 		Status: types.HandlerStatusSuccess,
 		Length: uint32(len(value)),
 		Data:   value,

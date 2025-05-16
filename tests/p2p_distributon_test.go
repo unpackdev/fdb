@@ -69,7 +69,7 @@ func TestP2PDistribution(t *testing.T) {
 	require.NotNil(t, resp, "Response should not be nil")
 
 	// Parse the response into a structured DBResponse object
-	dbResp, err := packets.DecodeDBResponse(resp)
+	dbResp, err := packets.DecodeMessageResponse(resp)
 	require.NoError(t, err, "Failed to decode response")
 
 	// Check that the status is success
@@ -170,7 +170,7 @@ func TestP2PDistribution(t *testing.T) {
 			require.NotNil(t, writeResp, "Write response should not be nil")
 
 			// Parse the write response into a structured DBResponse object
-			writeDbResp, err := packets.DecodeDBResponse(writeResp)
+			writeDbResp, err := packets.DecodeMessageResponse(writeResp)
 			require.NoError(t, err, "Failed to decode write response")
 			require.Equal(t, types.HandlerStatusSuccess, writeDbResp.Status, "Write operation should succeed with HandlerStatusSuccess")
 
@@ -201,8 +201,8 @@ func TestP2PDistribution(t *testing.T) {
 			require.NoError(t, err, "Failed to read record from bootstrap node")
 			require.NotNil(t, bootstrapResp, "Bootstrap node response should not be nil")
 
-			// Parse the response into a structured DBResponse object
-			bootstrapDbResp, err := packets.DecodeDBResponse(bootstrapResp)
+			// Parse the response into a structured MessageResponse object
+			bootstrapDbResp, err := packets.DecodeMessageResponse(bootstrapResp)
 			require.NoError(t, err, "Failed to decode bootstrap node response")
 			require.Equal(t, types.HandlerStatusSuccess, bootstrapDbResp.Status, "Bootstrap node response status should be HandlerStatusSuccess")
 
@@ -222,8 +222,8 @@ func TestP2PDistribution(t *testing.T) {
 			require.NoError(t, err, "Failed to read record from regular node")
 			require.NotNil(t, regularResp, "Regular node response should not be nil")
 
-			// Parse the response into a structured DBResponse object
-			regularDbResp, err := packets.DecodeDBResponse(regularResp)
+			// Parse the response into a structured MessageResponse object
+			regularDbResp, err := packets.DecodeMessageResponse(regularResp)
 			require.NoError(t, err, "Failed to decode regular node response")
 			require.Equal(t, types.HandlerStatusSuccess, regularDbResp.Status, "Regular node response status should be HandlerStatusSuccess")
 
@@ -284,7 +284,7 @@ func TestP2PLoadDistribution(t *testing.T) {
 	require.NoError(t, err, "Failed to send message or receive response")
 
 	// Parse the response into a structured DBResponse object
-	dbResp, err := packets.DecodeDBResponse(resp)
+	dbResp, err := packets.DecodeMessageResponse(resp)
 	require.NoError(t, err, "Failed to decode response")
 
 	// Check that the status is success
@@ -444,7 +444,7 @@ func TestP2PLoadDistribution(t *testing.T) {
 				require.NoError(t, err, "Failed to write record to bootstrap node")
 
 				// Parse the write response
-				writeDbResp, err := packets.DecodeDBResponse(writeResp)
+				writeDbResp, err := packets.DecodeMessageResponse(writeResp)
 				require.NoError(t, err, "Failed to decode write response")
 				require.Equal(t, types.HandlerStatusSuccess, writeDbResp.Status, "Write operation should succeed with HandlerStatusSuccess")
 			}
@@ -489,7 +489,7 @@ func TestP2PLoadDistribution(t *testing.T) {
 
 				if err == nil {
 					// Try to parse the response
-					regularDbResp, decodeErr := packets.DecodeDBResponse(regularResp)
+					regularDbResp, decodeErr := packets.DecodeMessageResponse(regularResp)
 					if decodeErr == nil && regularDbResp.Status == types.HandlerStatusSuccess {
 						// Success - check value
 						regularValue := regularDbResp.Data

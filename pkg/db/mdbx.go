@@ -51,7 +51,7 @@ type Db struct {
 //	Provider: A new MDBX database provider for interacting with the database.
 //	error: Returns an error if the environment or database creation fails.
 func NewDb(ctx context.Context, opts config.MdbxNode) (Provider, error) {
-	env, err := mdbx.NewEnv()
+	env, err := mdbx.NewEnv(mdbx.Label(opts.Name))
 	if err != nil {
 		return nil, err
 	}

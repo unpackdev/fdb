@@ -4,16 +4,19 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/panjf2000/gnet/v2"
 	"github.com/unpackdev/fdb/pkg/packets"
 	"github.com/unpackdev/fdb/pkg/types"
 	"go.uber.org/zap"
 )
 
+// Global transport instance for default handlers - will be set during registration
+var defaultTransport *TCPTransport
+
 // RegisterDefaultHandlers registers default message type handlers for common error conditions
 // and system messages that the client should always be able to handle.
 func RegisterDefaultHandlers(transport *TCPTransport) {
 	transport.logger.Info("Registering default message handlers for client")
+	defaultTransport = transport
 
 	// Register handler for InvalidActionMessageType (69 decimal = 'E' ASCII)
 	// This message type is sent by the server when it encounters issues with very large payloads
@@ -40,13 +43,12 @@ func RegisterDefaultHandlers(transport *TCPTransport) {
 
 // handleInvalidAction processes InvalidActionMessageType (0x69) messages from the server
 // These typically indicate resource constraints when processing large payloads
-func handleInvalidAction(conn gnet.Conn, data []byte) error {
-	// Try to parse the response data into a DBResponse object
-	dbResponse, err := packets.DecodeDBResponse(data)
+func handleInvalidAction(data []byte) error {
+	// Try to parse the response data into a MessageResponse object
+	dbResponse, err := packets.DecodeMessageResponse(data)
 	if err != nil {
-		handler, ok := conn.Context().(*tcpEventHandler)
-		if ok && handler != nil && handler.transport != nil && handler.transport.logger != nil {
-			handler.transport.logger.Error("Failed to decode InvalidAction response",
+		if defaultTransport != nil && defaultTransport.logger != nil {
+			defaultTransport.logger.Error("Failed to decode InvalidAction response",
 				zap.Error(err),
 				zap.Int("data_length", len(data)))
 		}
@@ -60,9 +62,8 @@ func handleInvalidAction(conn gnet.Conn, data []byte) error {
 	}
 
 	// Log the error
-	handler, ok := conn.Context().(*tcpEventHandler)
-	if ok && handler != nil && handler.transport != nil && handler.transport.logger != nil {
-		handler.transport.logger.Warn("Server reported invalid action or resource constraint",
+	if defaultTransport != nil && defaultTransport.logger != nil {
+		defaultTransport.logger.Warn("Server reported invalid action or resource constraint",
 			zap.String("error", errorMessage),
 			zap.Uint32("data_length", dbResponse.Length),
 			zap.Uint8("status", uint8(dbResponse.Status)))
@@ -70,14 +71,14 @@ func handleInvalidAction(conn gnet.Conn, data []byte) error {
 
 	// Since this is a special error type, we can notify any waiting response channels
 	// by converting this to a regular error response
-	errorResp := &packets.DBResponse{
+	errorResp := &packets.MessageResponse{
 		Status: types.HandlerStatusError,
 		Length: uint32(len(errorMessage)),
 		Data:   []byte(errorMessage),
 	}
 
 	// Forward this error to any success message handlers that might be waiting
-	if handler != nil && handler.transport != nil && handler.transport.responseHandler != nil {
+	if defaultTransport != nil && defaultTransport.responseHandler != nil {
 		// Create a new message that response handlers can understand (success message type)
 		successMsgType := MessageType(types.HandlerStatusSuccess.Byte())
 
@@ -85,21 +86,20 @@ func handleInvalidAction(conn gnet.Conn, data []byte) error {
 		encodedResp := errorResp.Encode()
 
 		// Use the response handler's existing mechanism to handle this
-		handler.transport.responseHandler.HandleResponse(successMsgType, encodedResp)
+		defaultTransport.responseHandler.HandleResponse(successMsgType, encodedResp)
 	}
 
 	return nil
 }
 
 // handleErrorResponse processes HandlerStatusError (0) messages from the server
-// These are properly formatted protocol error messages using DBResponse structure
-func handleErrorResponse(conn gnet.Conn, data []byte) error {
-	// Try to parse the response data into a DBResponse object
-	dbResponse, err := packets.DecodeDBResponse(data)
+// These are properly formatted protocol error messages using MessageResponse structure
+func handleErrorResponse(data []byte) error {
+	// Try to parse the response data into a MessageResponse object
+	dbResponse, err := packets.DecodeMessageResponse(data)
 	if err != nil {
-		handler, ok := conn.Context().(*tcpEventHandler)
-		if ok && handler != nil && handler.transport != nil && handler.transport.logger != nil {
-			handler.transport.logger.Error("Failed to decode Error response",
+		if defaultTransport != nil && defaultTransport.logger != nil {
+			defaultTransport.logger.Error("Failed to decode Error response",
 				zap.Error(err),
 				zap.Int("data_length", len(data)))
 		}
@@ -130,20 +130,19 @@ func handleErrorResponse(conn gnet.Conn, data []byte) error {
 	}
 
 	// Log the error
-	handler, ok := conn.Context().(*tcpEventHandler)
-	if ok && handler != nil && handler.transport != nil && handler.transport.logger != nil {
-		handler.transport.logger.Error("Received protocol-formatted error from server",
+	if defaultTransport != nil && defaultTransport.logger != nil {
+		defaultTransport.logger.Error("Received protocol-formatted error from server",
 			zap.String("error_message", errorMessage),
 			zap.Uint32("data_length", dbResponse.Length))
 	}
 
 	// Forward this error to any success message handlers that might be waiting
-	if handler != nil && handler.transport != nil && handler.transport.responseHandler != nil {
+	if defaultTransport != nil && defaultTransport.responseHandler != nil {
 		// Create a new message that response handlers can understand (success message type)
 		successMsgType := MessageType(types.HandlerStatusSuccess.Byte())
 
 		// Just pass the original data - it's already properly formatted
-		handler.transport.responseHandler.HandleResponse(successMsgType, data)
+		defaultTransport.responseHandler.HandleResponse(successMsgType, data)
 	}
 
 	return nil

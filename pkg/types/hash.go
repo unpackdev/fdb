@@ -5,10 +5,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"strings"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/pkg/errors"
 	"gopkg.in/yaml.v3"
-	"strings"
 )
 
 var (

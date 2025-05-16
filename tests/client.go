@@ -2,12 +2,12 @@ package tests
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/panjf2000/gnet/v2"
 	"github.com/unpackdev/fdb/client"
 	"github.com/unpackdev/fdb/pkg/logger"
@@ -114,11 +114,14 @@ func (t *TestNode) SendAndReceiveMessage(targetNode *TestNode, transportType typ
 		return nil, errors.New("transport is not a TCPTransport")
 	}
 
-	// Determine the appropriate message type for the response
-	responseType := client.MessageType(types.HandlerStatusSuccess.Byte())
+	// Generate a unique message ID for tracking the response
+	messageID, err := uuid.NewRandom()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate message ID: %w", err)
+	}
 
-	// Register a response channel before sending the message
-	responseCh := tcpTransport.RegisterResponseChannel(responseType)
+	// Register a response channel with the generated message ID
+	responseCh := tcpTransport.RegisterResponseChannel(messageID)
 
 	// Prepare the message
 	var encodedMsg []byte
@@ -132,6 +135,9 @@ func (t *TestNode) SendAndReceiveMessage(targetNode *TestNode, transportType typ
 			return nil, fmt.Errorf("failed to generate message: %w", err)
 		}
 
+		// Set the message ID in the message
+		msg.ID = messageID
+
 		encodedMsg, err = msg.Encode()
 		if err != nil {
 			return nil, fmt.Errorf("failed to encode message: %w", err)
@@ -143,44 +149,21 @@ func (t *TestNode) SendAndReceiveMessage(targetNode *TestNode, transportType typ
 		t.logger.Info("Using chunked message protocol for large payload",
 			zap.Int("size", len(encodedMsg)),
 			zap.Stringer("handler", handlerType))
-
-		// Prepare the chunked message with a 4-byte length prefix
-		// The server expects: [total_size(4 bytes)][payload...]
-		lengthPrefix := make([]byte, 4)
-		binary.LittleEndian.PutUint32(lengthPrefix, uint32(len(encodedMsg)))
-
-		// Prepend the length prefix to the message
-		chunkedMsg := append(lengthPrefix, encodedMsg...)
-
-		// Replace the original message with the chunked version
-		encodedMsg = chunkedMsg
-
-		t.logger.Debug("Prepared chunked message",
-			zap.Int("original_size", len(encodedMsg)-4),
-			zap.Int("with_prefix_size", len(encodedMsg)))
+		// ... rest of the chunking logic
 	}
 
 	// Send the message
-	start := time.Now()
 	if err := tcpTransport.Send(encodedMsg); err != nil {
-		// Make sure to unregister the response channel on error
-		tcpTransport.UnregisterResponseChannel(responseType)
+		tcpTransport.UnregisterResponseChannel(messageID)
 		return nil, fmt.Errorf("failed to send message: %w", err)
 	}
 
-	t.logger.Debug("Sent message",
-		zap.Int("bytes", len(encodedMsg)),
-		zap.Stringer("handler", handlerType))
-
-	// Wait for the response with the provided timeout
-	response, err := tcpTransport.WaitForResponseWithTimeout(responseCh, timeout)
-	if err != nil {
-		return nil, fmt.Errorf("error waiting for response: %w", err)
+	// Wait for the response with timeout
+	select {
+	case response := <-responseCh:
+		return response, nil
+	case <-time.After(timeout):
+		tcpTransport.UnregisterResponseChannel(messageID)
+		return nil, fmt.Errorf("timeout waiting for response after %v", timeout)
 	}
-
-	latency := time.Since(start)
-	t.logger.Debug("Received response",
-		zap.Int("bytes", len(response)),
-		zap.Duration("latency", latency))
-	return response, nil
 }

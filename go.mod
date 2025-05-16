@@ -10,7 +10,7 @@ require (
 	github.com/cilium/ebpf v0.16.0
 	github.com/cloudflare/circl v1.6.1
 	github.com/dustin/go-humanize v1.0.1
-	github.com/erigontech/mdbx-go v0.38.4
+	github.com/erigontech/mdbx-go v0.40.0
 	github.com/ethereum/go-ethereum v1.15.10
 	github.com/gobwas/ws v1.4.0
 	github.com/goccy/go-json v0.10.5
@@ -71,7 +71,7 @@ require (
 	github.com/hashicorp/golang-lru v1.0.2 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/huin/goupnp v1.3.0 // indirect
-	github.com/ianlancetaylor/cgosymbolizer v0.0.0-20240503222823-736c933a666d // indirect
+	github.com/ianlancetaylor/cgosymbolizer v0.0.0-20241129212102-9c50ad6b591e // indirect
 	github.com/ipfs/boxo v0.29.1 // indirect
 	github.com/ipfs/go-cid v0.5.0 // indirect
 	github.com/ipfs/go-datastore v0.8.2 // indirect

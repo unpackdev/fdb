@@ -1,10 +1,10 @@
-// pkg/transports/tcp/server.go
 package tcp
 
 import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"net"
 	"strings"
@@ -267,8 +267,6 @@ func (s *Server) OnTraffic(c gnet.Conn) (action gnet.Action) {
 		return gnet.Close
 	}
 
-	//s.logger.Debug("On traffic reached...")
-
 	// In case that on traffic handler is set, bypass the entire packet handling bellow.
 	// Bellow custom packet is expected (Protocol+PacketLength+Data) where this WILL NOT
 	// be the case with HTTP, WebSocket, etc...
@@ -286,11 +284,12 @@ func (s *Server) OnTraffic(c gnet.Conn) (action gnet.Action) {
 		return gnet.None
 	}
 
-	// Debug the data received
-	// fmt.Printf("SERVER RECEIVED PACKET - Size: %d bytes\n", len(data))
-	// if len(data) >= 4 {
-	// 	fmt.Printf("FIRST 4 BYTES: %v\n", data[:4])
-	// }
+	// Debug logging to see what's being received
+	s.logger.Debug(
+		"Server received packet",
+		zap.Int("data_size", len(data)),
+		zap.Binary("first_bytes", data[:min(10, len(data))]),
+	)
 
 	// First check if we're continuing a chunked message reassembly
 	if ctx.ChunkedMessageInfo != nil {
@@ -298,16 +297,19 @@ func (s *Server) OnTraffic(c gnet.Conn) (action gnet.Action) {
 		ctx.ChunkedMessageInfo.Buffer.Write(data)
 		ctx.ChunkedMessageInfo.CurrentSize += uint32(len(data))
 
-		s.logger.Debug("Continuing chunked message reassembly",
+		s.logger.Debug(
+			"Continuing chunked message reassembly",
 			zap.Int("chunk_size", len(data)),
 			zap.Uint32("current_size", ctx.ChunkedMessageInfo.CurrentSize),
-			zap.Uint32("total_size", ctx.ChunkedMessageInfo.TotalSize))
+			zap.Uint32("total_size", ctx.ChunkedMessageInfo.TotalSize),
+		)
 
 		// Check if we've received the complete message
 		if ctx.ChunkedMessageInfo.CurrentSize >= ctx.ChunkedMessageInfo.TotalSize {
-			// We have the complete message, use it for processing
-			s.logger.Debug("Chunked message reassembly complete",
-				zap.Uint32("final_size", ctx.ChunkedMessageInfo.CurrentSize))
+			s.logger.Debug(
+				"Chunked message reassembly complete",
+				zap.Uint32("final_size", ctx.ChunkedMessageInfo.CurrentSize),
+			)
 
 			// Use the reassembled data for further processing
 			data = ctx.ChunkedMessageInfo.Buffer.Bytes()
@@ -321,7 +323,6 @@ func (s *Server) OnTraffic(c gnet.Conn) (action gnet.Action) {
 	} else {
 		// Check if this is the start of a new chunked message protocol (for large payloads)
 		if len(data) >= 4 {
-			// First try to parse as a regular message
 			_, firstParseErr := s.parseFrameType(data)
 
 			// If this fails, it might be our chunked protocol
@@ -375,8 +376,8 @@ func (s *Server) OnTraffic(c gnet.Conn) (action gnet.Action) {
 		// Create a proper protocol-formatted error response
 		errorMsg := "ERROR: Invalid action"
 
-		// Create a DBResponse with error status
-		dbResp := &packets.DBResponse{
+		// Create a MessageResponse with error status
+		dbResp := &packets.MessageResponse{
 			Status: types.HandlerStatusError,
 			Length: uint32(len(errorMsg)),
 			Data:   []byte(errorMsg),
@@ -496,16 +497,32 @@ func (s *Server) DeregisterHandler(protocolType types.HandlerType) {
 	delete(s.handlerRegistry, protocolType)
 }
 
-// parseActionType parses the action type from the frame
+// parseFrameType parses the frame type from a packet's header
 func (s *Server) parseFrameType(frame []byte) (types.HandlerType, error) {
 	if len(frame) < 1 {
-		return 0, errors.New("invalid frame: frame too short")
+		s.logger.Warn("Frame too short to determine action type", zap.Int("frame_length", len(frame)))
+		return types.HandlerType(0), fmt.Errorf("frame too short")
 	}
 
-	var actionType types.HandlerType
-	err := actionType.FromByte(frame[0])
-	if err != nil {
-		return 0, err
+	// The first byte of the packet determines the action type
+	actionTypeValue := frame[0]
+	actionType := types.HandlerType(actionTypeValue)
+
+	s.logger.Debug(
+		"Parsing frame type",
+		zap.Int("frame_length", len(frame)),
+		zap.String("action_type", actionType.String()),
+		zap.Uint8("action_byte", actionTypeValue),
+	)
+
+	if actionType != types.WriteHandlerType &&
+		actionType != types.ReadHandlerType {
+		s.logger.Warn(
+			"Unknown action type",
+			zap.Uint8("value", actionTypeValue),
+			zap.Binary("frame_header", frame[:min(10, len(frame))]),
+		)
+		return types.HandlerType(0), fmt.Errorf("unknown action type: %d", actionTypeValue)
 	}
 
 	return actionType, nil

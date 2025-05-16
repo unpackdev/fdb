@@ -4,72 +4,72 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/unpackdev/fdb/pkg/packets"
-	"github.com/unpackdev/fdb/pkg/types"
 )
 
 // ResponseCallback defines a function that processes a response message
-type ResponseCallback func(response *packets.DBResponse) error
+type ResponseCallback func(response *packets.MessageResponse) error
 
 // ResponseHandler manages both channel-based and callback-based responses
 // for asynchronous message handling
 type ResponseHandler struct {
 	mu                sync.Mutex
-	responseChans     map[MessageType]chan []byte      // Map message type to response channel
-	responseCallbacks map[MessageType]ResponseCallback // Map message type to callback function
+	responseChans     map[uuid.UUID]chan []byte      // Map message UUID to response channel
+	responseCallbacks map[uuid.UUID]ResponseCallback // Map message UUID to callback function
 	defaultTimeout    time.Duration
 }
 
 // NewResponseHandler creates a new response handler with a default timeout
 func NewResponseHandler(defaultTimeout time.Duration) *ResponseHandler {
 	return &ResponseHandler{
-		responseChans:     make(map[MessageType]chan []byte),
-		responseCallbacks: make(map[MessageType]ResponseCallback),
+		responseChans:     make(map[uuid.UUID]chan []byte),
+		responseCallbacks: make(map[uuid.UUID]ResponseCallback),
 		defaultTimeout:    defaultTimeout,
 	}
 }
 
-// RegisterChannel registers a response channel for a specific message type
+// RegisterChannel registers a response channel for a specific message ID
 // and returns the channel
-func (h *ResponseHandler) RegisterChannel(messageType MessageType) chan []byte {
+func (h *ResponseHandler) RegisterChannel(messageID uuid.UUID) chan []byte {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	// If a channel already exists, close it to prevent resource leaks
-	if ch, exists := h.responseChans[messageType]; exists {
+	if ch, exists := h.responseChans[messageID]; exists {
 		close(ch)
 	}
 
 	ch := make(chan []byte, 1) // Buffer of 1 to prevent blocking
-	h.responseChans[messageType] = ch
+	h.responseChans[messageID] = ch
 	return ch
 }
 
-// RegisterCallback registers a callback function for a specific message type
-func (h *ResponseHandler) RegisterCallback(messageType MessageType, callback ResponseCallback) {
+// RegisterCallback registers a callback function for a specific message ID
+func (h *ResponseHandler) RegisterCallback(messageID uuid.UUID, callback ResponseCallback) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	h.responseCallbacks[messageType] = callback
+	h.responseCallbacks[messageID] = callback
 }
 
-// UnregisterChannel removes a response channel for a specific message type
-func (h *ResponseHandler) UnregisterChannel(messageType MessageType) {
+// UnregisterChannel removes a response channel for a specific message ID
+func (h *ResponseHandler) UnregisterChannel(messageID uuid.UUID) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	if ch, exists := h.responseChans[messageType]; exists {
+	if ch, exists := h.responseChans[messageID]; exists {
 		close(ch)
-		delete(h.responseChans, messageType)
+		delete(h.responseChans, messageID)
 	}
 }
 
-// UnregisterCallback removes a callback for a specific message type
-func (h *ResponseHandler) UnregisterCallback(messageType MessageType) {
+// UnregisterCallback removes a callback for a specific message ID
+func (h *ResponseHandler) UnregisterCallback(messageID uuid.UUID) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	delete(h.responseCallbacks, messageType)
+	delete(h.responseCallbacks, messageID)
 }
 
 // HandleResponse processes an incoming response and routes it to the appropriate handler
@@ -80,17 +80,16 @@ func (h *ResponseHandler) HandleResponse(messageType MessageType, data []byte) b
 
 	handled := false
 
-	// Parse the response data into a DBResponse object
-	dbResponse, err := packets.DecodeDBResponse(data)
+	// Parse the response data into a MessageResponse object
+	response, err := packets.DecodeMessageResponse(data)
 	if err != nil {
-		// If we can't parse the response, just use the raw data for channel-based handling
-		// For callbacks, we'll need to handle the error separately
-		dbResponse = nil
+		// If we can't parse the response, we can't route it by UUID
+		return false
 	}
 
 	// Check for a channel and send the response
-	if ch, exists := h.responseChans[messageType]; exists {
-		// For channel-based handling, we still send the raw data for backward compatibility
+	if ch, exists := h.responseChans[response.ID]; exists {
+		// For channel-based handling, we still send the raw data
 		// Prepend the message type byte to preserve the complete message
 		fullData := append([]byte{byte(messageType)}, data...)
 		select {
@@ -98,27 +97,18 @@ func (h *ResponseHandler) HandleResponse(messageType MessageType, data []byte) b
 			handled = true
 		default: // Don't block if channel is full or closed
 		}
-		delete(h.responseChans, messageType) // Clean up after handling
+		delete(h.responseChans, response.ID) // Clean up after handling
 	}
 
 	// Check for a callback and execute it
-	if callback, exists := h.responseCallbacks[messageType]; exists {
-		go func(cb ResponseCallback, resp *packets.DBResponse, rawData []byte) {
-			if resp == nil {
-				// If we couldn't decode the response, create an error response
-				resp = &packets.DBResponse{
-					Status: types.HandlerStatusError,
-					Length: uint32(len("Invalid response format")),
-					Data:   []byte("Invalid response format"),
-				}
-			}
-
+	if callback, exists := h.responseCallbacks[response.ID]; exists {
+		go func(cb ResponseCallback, resp *packets.MessageResponse) {
 			// Execute the callback with the structured response
 			if err := cb(resp); err != nil {
 				// You might want to log this error in a real implementation
 			}
-		}(callback, dbResponse, data)
-		delete(h.responseCallbacks, messageType) // Clean up after handling
+		}(callback, response)
+		delete(h.responseCallbacks, response.ID) // Clean up after handling
 		handled = true
 	}
 
@@ -140,9 +130,9 @@ func (h *ResponseHandler) WaitForResponseWithTimeout(ch chan []byte, timeout tim
 		h.mu.Lock()
 		defer h.mu.Unlock()
 
-		for msgType, registeredCh := range h.responseChans {
+		for msgID, registeredCh := range h.responseChans {
 			if registeredCh == ch {
-				delete(h.responseChans, msgType)
+				delete(h.responseChans, msgID)
 				break
 			}
 		}

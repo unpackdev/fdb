@@ -13,6 +13,7 @@ import (
 	"github.com/unpackdev/fdb/pkg/messages"
 	"github.com/unpackdev/fdb/pkg/types"
 	"go.uber.org/zap"
+	"github.com/google/uuid"
 )
 
 const (
@@ -33,7 +34,7 @@ func CreateClient(ctx context.Context, logger logger.Logger, port int) (*client.
 		gnet.WithSocketRecvBuffer(256*1024), // 256KB receive buffer
 		gnet.WithSocketSendBuffer(256*1024), // 256KB send buffer
 	)
-
+	
 	// Register the transport with the client
 	if err := cli.RegisterTransport("tcp", tcpTransport); err != nil {
 		return nil, err
@@ -116,16 +117,13 @@ func (t *TestNode) SendAndReceiveMessage(ctx context.Context, targetNode *TestNo
 		return nil, errors.New("transport is not a TCPTransport")
 	}
 
-	// Determine the appropriate message type for the response
-	responseType := client.MessageType(types.HandlerStatusSuccess.Byte())
-
-	// Register a response channel before sending the message
-	responseCh := tcpTransport.RegisterResponseChannel(responseType)
-
 	// Prepare the message
 	var encodedMsg []byte
-	if _, decErr := messages.Decode(data); decErr == nil {
+	var messageID uuid.UUID
+
+	if decodedMsg, decErr := messages.Decode(data); decErr == nil {
 		// Data is already an encoded message
+		messageID = decodedMsg.ID
 		encodedMsg = data
 	} else {
 		// Generate a new message with the data
@@ -134,11 +132,15 @@ func (t *TestNode) SendAndReceiveMessage(ctx context.Context, targetNode *TestNo
 			return nil, fmt.Errorf("failed to generate message: %w", err)
 		}
 
+		messageID = msg.ID
 		encodedMsg, err = msg.Encode()
 		if err != nil {
 			return nil, fmt.Errorf("failed to encode message: %w", err)
 		}
 	}
+
+	// Register a response channel using the message ID for correlation
+	responseCh := tcpTransport.RegisterResponseChannel(messageID)
 
 	// For large payloads, we use a chunking protocol to ensure reliable transmission
 	if len(encodedMsg) > maxChunkSize {
@@ -177,12 +179,12 @@ func (t *TestNode) SendAndReceiveMessage(ctx context.Context, targetNode *TestNo
 	case err := <-sendCh:
 		if err != nil {
 			// Make sure to unregister the response channel on error
-			tcpTransport.UnregisterResponseChannel(responseType)
+			tcpTransport.UnregisterResponseChannel(messageID)
 			return nil, fmt.Errorf("failed to send message: %w", err)
 		}
 	case <-ctx.Done():
 		// Make sure to unregister the response channel on context cancellation
-		tcpTransport.UnregisterResponseChannel(responseType)
+		tcpTransport.UnregisterResponseChannel(messageID)
 		return nil, fmt.Errorf("message send cancelled: %w", ctx.Err())
 	}
 
@@ -190,6 +192,7 @@ func (t *TestNode) SendAndReceiveMessage(ctx context.Context, targetNode *TestNo
 		"Sent message",
 		zap.Int("bytes", len(encodedMsg)),
 		zap.Stringer("handler", handlerType),
+		zap.String("message_id", messageID.String()),
 	)
 
 	// Create a response channel to get the result from WaitForResponseWithTimeout
@@ -222,7 +225,7 @@ func (t *TestNode) SendAndReceiveMessage(ctx context.Context, targetNode *TestNo
 		return result.resp, nil
 	case <-ctx.Done():
 		// Context was cancelled while waiting for response
-		tcpTransport.UnregisterResponseChannel(responseType)
+		tcpTransport.UnregisterResponseChannel(messageID)
 		return nil, fmt.Errorf("waiting for response cancelled: %w", ctx.Err())
 	}
 }

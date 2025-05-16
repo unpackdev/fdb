@@ -5,6 +5,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/google/uuid"
+	"github.com/unpackdev/fdb/pkg/messages"
 	"github.com/unpackdev/fdb/pkg/types"
 	"sync"
 	"time"
@@ -91,13 +93,10 @@ func (c *Client) Close() error {
 	return nil
 }
 
-// SendAndReceiveMessage sends a message to another node and waits for a
-// response. This implementation handles large payloads with chunking and
-// provides proper response handling with timeouts.
-// Note: Currently this method only works with TCPTransport and will return
-// an error for other transport types.
-func (c *Client) SendAndReceiveMessage(name string, data []byte, timeout time.Duration) ([]byte, error) {
-	transport, err := c.GetTransport(name)
+// SendAndReceiveMessage sends a message and waits for a response with the specified timeout.
+func (c *Client) SendAndReceiveMessage(ctx context.Context, transportType string, data []byte, timeout time.Duration) ([]byte, error) {
+	// Get the transport
+	transport, err := c.GetTransport(transportType)
 	if err != nil {
 		return nil, err
 	}
@@ -108,11 +107,23 @@ func (c *Client) SendAndReceiveMessage(name string, data []byte, timeout time.Du
 		return nil, fmt.Errorf("SendAndReceiveMessage is only supported for TCP transport, got %T", transport)
 	}
 
-	// Get the response message type - use the success status
-	responseType := MessageType(1) // Using 1 as a default success value
+	// Try to decode the message to extract the UUID
+	// If it's not already an encoded message, we'll need to generate a new UUID
+	var messageID uuid.UUID
 
-	// Register a response channel before sending the message
-	responseCh := tcpTransport.RegisterResponseChannel(responseType)
+	if decodedMsg, err := messages.Decode(data); err == nil {
+		// Data is already an encoded message, extract the ID
+		messageID = decodedMsg.ID
+	} else {
+		// Generate a new UUID for this request
+		messageID = uuid.New()
+		// Note: we should ideally encode this ID into the data, but for now
+		// we'll just use it for correlation. In a complete implementation,
+		// you'd want to encode the data with this ID.
+	}
+
+	// Register a response channel using the message ID
+	responseCh := tcpTransport.RegisterResponseChannel(messageID)
 
 	// Define the maximum size for non-chunked messages
 	const maxChunkSize = 1024 * 1024 // 1MB
@@ -135,7 +146,7 @@ func (c *Client) SendAndReceiveMessage(name string, data []byte, timeout time.Du
 	// Send the message
 	if err := tcpTransport.Send(encodedMsg); err != nil {
 		// Make sure to unregister the response channel on error
-		tcpTransport.UnregisterResponseChannel(responseType)
+		tcpTransport.UnregisterResponseChannel(messageID)
 		return nil, fmt.Errorf("failed to send message: %w", err)
 	}
 

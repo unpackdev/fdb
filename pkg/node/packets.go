@@ -107,7 +107,7 @@ func (d *P2PDistributor) createRecordBatchPacket(records []db.WriteRequest) ([]b
 func (d *P2PDistributor) HandleRecordBatchPacket(ctx context.Context, packet *packets.NetworkPacket, sender peer.ID) error {
 	start := time.Now()
 
-	d.logger.Info(
+	d.logger.Debug(
 		"Received record batch packet",
 		zap.String("from_peer", sender.String()),
 		zap.Int("payload_size", len(packet.Payload)),
@@ -121,33 +121,11 @@ func (d *P2PDistributor) HandleRecordBatchPacket(ctx context.Context, packet *pa
 	}
 
 	// Log batch info
-	d.logger.Info(
+	d.logger.Debug(
 		"Processing incoming record batch",
 		zap.String("from_peer", sender.String()),
 		zap.Int("record_count", len(recordBatch.Records)),
 	)
-
-	// Debug log the first 3 record keys and value prefixes for verification
-	for i, record := range recordBatch.Records {
-		if i < 3 { // Limit to first 3 records to avoid log spam
-			valPrefix := ""
-			if len(record.Value) > 0 {
-				prefixLen := 10
-				if len(record.Value) < prefixLen {
-					prefixLen = len(record.Value)
-				}
-				valPrefix = fmt.Sprintf("%v", record.Value[:prefixLen])
-			}
-			// Log key and value prefix for this record - use INFO level to ensure visibility
-			d.logger.Info(
-				"RECEIVED RECORD DETAILS",
-				zap.Int("index", i),
-				zap.String("key", fmt.Sprintf("%x", record.Key)),
-				zap.String("value_prefix", valPrefix),
-				zap.Int("value_length", len(record.Value)),
-			)
-		}
-	}
 
 	successCount := 0
 	errorCount := 0

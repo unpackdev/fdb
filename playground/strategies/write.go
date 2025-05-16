@@ -215,7 +215,7 @@ func (s *WriteStrategy) runWorker(ctx context.Context, id, ops int, delay time.D
 func (s *WriteStrategy) performWriteOperation(ctx context.Context, workerID, opID int) error {
 	//key := fmt.Sprintf("%s%d-%d", s.keyPrefix, workerID, opID)
 
-	data, err := suite.GenerateTestDataKB(s.dataSizeKB, false)
+	data, err := suite.GenerateTestDataKB(s.dataSizeKB, true)
 	if err != nil {
 		return fmt.Errorf("failed to generate test data: %w", err)
 	}
@@ -239,22 +239,19 @@ func (s *WriteStrategy) performWriteOperation(ctx context.Context, workerID, opI
 		return fmt.Errorf("failed to encode write message: %w", err)
 	}
 
-	// Send the message to the target node using the client
-	// This leverages the optimized BatchWriter component with 2048 batch size and 100ms flush interval
-	// that's already configured in the underlying implementation
 	response, err := s.targetNode.SendAndReceiveMessage(
 		ctx,
 		s.targetNode,
 		types.TCPTransportType,
 		types.WriteHandlerType,
 		encodedWriteMsg,
-		5*time.Second,
+		300*time.Millisecond,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to write record to target node: %w", err)
 	}
 
-	s.logger.Debug(
+	s.logger.Info(
 		"Write operation successful",
 		"key", key,
 		"data_size", len(data),

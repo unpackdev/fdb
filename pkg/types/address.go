@@ -5,10 +5,11 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
+
 	"github.com/ethereum/go-ethereum/common"
 	"golang.org/x/crypto/sha3"
 	"gopkg.in/yaml.v3"
-	"strings"
 )
 
 // ErrInvalidAddressLength is returned when the address does not have the correct length.
